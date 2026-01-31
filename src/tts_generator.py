@@ -2,10 +2,10 @@
 TTS 音频生成模块
 使用 Provider 架构支持多种 TTS 服务
 
-设计原则：
-- 依赖注入
-- 不可变配置
-- 清晰的错误分类
+改进：
+- 集成模型健康检查
+- Provider 故障时自动切换
+- 前端用户无感知
 """
 
 import os
@@ -14,6 +14,9 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 from .tts_providers import create_tts_provider, TTSProviderFactory
 from .model_health_checker import get_health_checker
+from .logger import get_logger
+
+logger = get_logger("tts_generator")
 
 
 class TTSResult(TypedDict):  # type: ignore[misc]
@@ -43,55 +46,28 @@ class TTSGenerator:
     职责：
     - 管理 TTS Provider 生命周期
     - 生成语音文件
-    - 返回处理结果
+    - Provider 故障时自动切换（前端无感知）
     """
     
     def __init__(self, config: Dict[str, Any]) -> None:
         """
         初始化 TTS 生成器
         
-        Args:
-            config: 配置字典，包含 provider, api_key, voice, speed 等
-            
-        Raises:
-            TTSError: Provider 初始化失败
+        从健康检查器获取当前可用 Provider 配置
         """
-        self._config: Dict[str, Any] = config.copy()
-        
-        # 解析 API Key
-        self._resolve_api_key()
+        # 从健康检查器获取当前 Provider 配置
+        health_checker = get_health_checker()
+        try:
+            self._config = health_checker.get_tts_config()
+            logger.info(f"Using TTS provider: {self._config.get('provider')}")
+        except RuntimeError as e:
+            raise TTSError(f"No TTS providers available: {e}")
         
         # 初始化 Provider
         self._init_provider()
     
-    def _resolve_api_key(self) -> None:
-        """从环境变量解析 API Key"""
-        api_key_env = self._config.get('api_key_env')
-        if api_key_env and not self._config.get('api_key'):
-            api_key = os.environ.get(api_key_env)
-            if api_key:
-                self._config['api_key'] = api_key
-    
     def _init_provider(self) -> None:
-        """初始化 TTS Provider，带健康检查"""
-        from logger import get_logger
-        logger = get_logger("tts_generator")
-        
-        # 健康检查并自动切换
-        health_checker = get_health_checker()
-        final_config, switched, error = health_checker.check_and_switch("tts", self._config)
-        
-        if error:
-            raise TTSError(f"No healthy TTS provider available: {error}")
-        
-        if switched:
-            original = self._config.get('provider')
-            new_provider = final_config.get('provider')
-            logger.warning(
-                f"Switched TTS provider from {original} to {new_provider} due to health check"
-            )
-            self._config = final_config
-        
+        """初始化 TTS Provider"""
         provider_name = self._config.get('provider', 'edge-tts')
         
         try:
@@ -105,43 +81,90 @@ class TTSGenerator:
         """
         生成音频文件
         
-        Args:
-            text: 要转换为语音的文本
-            output_path: 输出文件路径
-            
+        如果当前 Provider 失败，自动切换到下一个可用 Provider 重试
+        """
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                # 确保输出目录存在
+                output_dir = os.path.dirname(output_path)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                
+                # 使用 Provider 合成语音
+                result = self._provider.synthesize(text, output_path)
+                
+                if result['success']:
+                    return TTSResult(
+                        success=True,
+                        file_path=result.get('file_path', ''),
+                        duration=result.get('duration', 0.0),
+                        error=""
+                    )
+                else:
+                    # API 返回错误，可能是 Provider 问题
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.warning(f"TTS API error: {error_msg}")
+                    
+                    # 尝试切换 Provider
+                    if self._try_switch_provider():
+                        continue  # 用新 Provider 重试
+                    else:
+                        return TTSResult(
+                            success=False,
+                            file_path="",
+                            duration=0.0,
+                            error=error_msg
+                        )
+                
+            except Exception as e:
+                last_error = e
+                logger.error(f"TTS generation error (attempt {attempt + 1}): {e}")
+                
+                # 尝试切换 Provider
+                if self._try_switch_provider():
+                    continue  # 用新 Provider 重试
+                else:
+                    break  # 没有可用 Provider 了
+        
+        # 所有尝试都失败
+        return TTSResult(
+            success=False,
+            file_path="",
+            duration=0.0,
+            error=f"Failed after {max_retries} attempts: {str(last_error)}"
+        )
+    
+    def _try_switch_provider(self) -> bool:
+        """
+        尝试切换到下一个可用 Provider
+        
         Returns:
-            TTSResult: 生成结果
+            是否成功切换
         """
         try:
-            # 确保输出目录存在
-            output_dir = os.path.dirname(output_path)
-            if output_dir:
-                os.makedirs(output_dir, exist_ok=True)
+            health_checker = get_health_checker()
+            new_config = health_checker.report_tts_failure()
             
-            # 使用 Provider 合成语音
-            result = self._provider.synthesize(text, output_path)
+            # 更新配置并重新初始化 provider
+            self._config = new_config
+            self._init_provider()
             
-            return TTSResult(
-                success=result['success'],
-                file_path=result.get('file_path', ''),
-                duration=result.get('duration', 0.0),
-                error=result.get('error', '')
-            )
+            logger.info(f"Switched to TTS provider: {new_config.get('provider')}")
+            return True
             
-        except Exception as e:
-            return TTSResult(
-                success=False,
-                file_path="",
-                duration=0.0,
-                error=f"TTS generation error: {str(e)}"
-            )
+        except RuntimeError as e:
+            logger.error(f"Failed to switch TTS provider: {e}")
+            return False
     
     @property
     def provider_info(self) -> Dict[str, Any]:
         """获取当前 Provider 信息"""
         return {
             'name': self._provider.get_provider_name(),
-            'voice': self._provider.voice,
+            'voice': self._config.get('voice', ''),
             'available_voices': self._provider.get_voice_list()
         }
     
@@ -152,10 +175,5 @@ class TTSGenerator:
 
 
 def get_available_tts_providers() -> List[str]:
-    """
-    获取所有可用的 TTS Provider 列表
-    
-    Returns:
-        Provider 名称列表
-    """
+    """获取所有可用的 TTS Provider 列表"""
     return TTSProviderFactory.get_available_providers()

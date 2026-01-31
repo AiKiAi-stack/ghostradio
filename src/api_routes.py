@@ -383,9 +383,10 @@ def handle_api_request(
         else:
             result = (404, {'error': 'Not found'}, 'application/json')
         
-        # 记录API请求
-        duration_ms = (time.time() - start_time) * 1000
-        logger.log_api_request(method, path, result[0], duration_ms)
+        # 记录API请求（排除频繁的进度查询）
+        if not path.startswith('/api/progress/'):
+            duration_ms = (time.time() - start_time) * 1000
+            logger.log_api_request(method, path, result[0], duration_ms)
         
         return result
         

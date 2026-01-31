@@ -139,9 +139,9 @@
             cursor: not-allowed;
         }
 
-        /* Progress */
+        /* Progress - Three Steps */
         .progress-container {
-            margin-top: 20px;
+            margin-top: 24px;
             display: none;
         }
 
@@ -149,38 +149,109 @@
             display: block;
         }
 
-        .progress-header {
+        .steps-container {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .progress-bar {
-            height: 10px;
-            background: var(--border);
-            border-radius: 5px;
-            overflow: hidden;
+            margin-bottom: 24px;
             position: relative;
         }
 
-        .progress-fill {
+        .steps-container::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 16%;
+            right: 16%;
+            height: 4px;
+            background: var(--border);
+            z-index: 0;
+        }
+
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+        }
+
+        .step-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+            border: 3px solid transparent;
+        }
+
+        .step.active .step-icon {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-color: white;
+            box-shadow: 0 0 0 3px var(--primary);
+            animation: pulse 2s infinite;
+        }
+
+        .step.completed .step-icon {
+            background: var(--success);
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .step-label {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-light);
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .step.active .step-label {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .step.completed .step-label {
+            color: var(--success);
+        }
+
+        /* Progress Bar */
+        .progress-bar-container {
+            background: var(--border);
+            border-radius: 10px;
+            height: 12px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
-            border-radius: 5px;
-            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            border-radius: 10px;
+            transition: width 0.5s ease;
             width: 0%;
             position: relative;
         }
 
-        .progress-fill::after {
+        .progress-bar::after {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
             animation: shimmer 2s infinite;
         }
 
@@ -189,70 +260,12 @@
             100% { transform: translateX(100%); }
         }
 
-        .progress-status {
-            margin-top: 12px;
-            font-size: 0.95rem;
-            color: var(--text);
+        .progress-info {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 8px;
-        }
-
-        .progress-time {
-            font-size: 0.85rem;
-            color: var(--text-light);
-            margin-left: auto;
-        }
-
-        /* Warning & Error */
-        .warning-box {
-            background: #fffaf0;
-            border: 2px solid var(--warning);
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 12px;
-            display: none;
-            align-items: center;
-            gap: 8px;
-            color: #c05621;
-        }
-
-        .warning-box.show {
-            display: flex;
-        }
-
-        .error-box {
-            background: #fff5f5;
-            border: 2px solid var(--error);
-            border-radius: 8px;
-            padding: 16px;
-            margin-top: 16px;
-            display: none;
-        }
-
-        .error-box.show {
-            display: block;
-        }
-
-        .error-title {
-            font-weight: 600;
-            color: var(--error);
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .error-details {
             font-size: 0.9rem;
-            color: var(--text);
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            margin-top: 8px;
-            font-family: monospace;
-            white-space: pre-wrap;
-            word-break: break-all;
+            color: var(--text-light);
         }
 
         /* Result */
@@ -281,6 +294,20 @@
             display: flex;
             gap: 12px;
             flex-wrap: wrap;
+        }
+
+        /* Error */
+        .error-box {
+            background: #fff5f5;
+            border: 2px solid var(--error);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .error-box.show {
+            display: block;
         }
 
         /* Episodes */
@@ -334,32 +361,6 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
-        /* Stage indicator */
-        .stage-indicator {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            font-size: 0.85rem;
-        }
-
-        .stage-item {
-            padding: 4px 12px;
-            border-radius: 20px;
-            background: var(--border);
-            color: var(--text-light);
-            transition: all 0.3s;
-        }
-
-        .stage-item.active {
-            background: var(--primary);
-            color: white;
-        }
-
-        .stage-item.completed {
-            background: var(--success);
-            color: white;
-        }
     </style>
 </head>
 <body>
@@ -405,51 +406,46 @@
                 </button>
             </div>
 
-            <!-- Progress -->
+            <!-- Progress - Three Steps -->
             <div class="progress-container" id="progress-container">
-                <div class="progress-header">
-                    <span style="font-weight:600;">生成进度</span>
-                    <span style="font-weight:600;color:var(--primary);" id="progress-percent">0%</span>
-                </div>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progress-fill"></div>
-                </div>
-                <div class="progress-status">
-                    <span id="progress-message">准备开始...</span>
-                    <span class="progress-time" id="elapsed-time">已用时: 0秒</span>
-                </div>
-                
-                <!-- Stage Indicators -->
-                <div class="stage-indicator">
-                    <span class="stage-item" id="stage-fetch">📥 获取内容</span>
-                    <span class="stage-item" id="stage-llm">🧠 AI总结</span>
-                    <span class="stage-item" id="stage-tts">🔊 语音合成</span>
+                <!-- Three Steps -->
+                <div class="steps-container">
+                    <div class="step" id="step-1">
+                        <div class="step-icon">📥</div>
+                        <div class="step-label">素材收集中</div>
+                    </div>
+                    <div class="step" id="step-2">
+                        <div class="step-icon">✍️</div>
+                        <div class="step-label">手稿准备中</div>
+                    </div>
+                    <div class="step" id="step-3">
+                        <div class="step-icon">🎙️</div>
+                        <div class="step-label">播音员上线中</div>
+                    </div>
                 </div>
 
-                <!-- Timeout Warning -->
-                <div class="warning-box" id="timeout-warning">
-                    <span>⚠️</span>
-                    <span id="timeout-message">处理时间较长，请耐心等待...</span>
+                <!-- Progress Bar -->
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+
+                <!-- Progress Info -->
+                <div class="progress-info">
+                    <span id="progress-status">准备开始...</span>
+                    <span id="progress-percent">0%</span>
                 </div>
             </div>
 
-            <!-- Error Display -->
+            <!-- Error -->
             <div class="error-box" id="error-box">
-                <div class="error-title">
-                    <span>❌</span>
-                    <span>生成失败</span>
-                </div>
+                <div style="font-weight:600;color:var(--error);margin-bottom:8px;">❌ 生成失败</div>
                 <div id="error-message"></div>
-                <div class="error-details" id="error-details"></div>
             </div>
 
             <!-- Result -->
             <div class="result-container" id="result-container">
                 <div class="result-card">
-                    <div style="font-weight:600;color:var(--success);margin-bottom:16px;display:flex;align-items:center;gap:8px;">
-                        <span>✅</span>
-                        <span>生成成功！</span>
-                    </div>
+                    <div style="font-weight:600;color:var(--success);margin-bottom:16px;">✅ 生成成功！</div>
                     <audio class="audio-player" id="result-audio" controls></audio>
                     <div class="action-buttons">
                         <button class="btn btn-primary" onclick="copyUrl()">📋 复制链接</button>
@@ -473,17 +469,13 @@
     </div>
 
     <!-- Toast -->
-    <div class="toast" id="toast">
-        <span id="toast-message">操作成功</span>
-    </div>
+    <div class="toast" id="toast"></div>
 
     <script>
         // State
         let currentJobId = null;
         let progressInterval = null;
-        let elapsedInterval = null;
         let currentAudioUrl = '';
-        let startTime = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -496,7 +488,7 @@
             const url = urlInput.value.trim();
             
             if (!url || !isValidUrl(url)) {
-                showToast('请输入有效的 URL', 'error');
+                showToast('请输入有效的 URL');
                 return;
             }
 
@@ -506,14 +498,14 @@
             // Reset UI
             resetUI();
             
-            // UI Updates
+            // Show progress
             document.getElementById('generate-btn').style.display = 'none';
             document.getElementById('cancel-btn').style.display = 'inline-flex';
-            showProgress();
+            document.getElementById('progress-container').classList.add('active');
             
-            startTime = Date.now();
-            startElapsedTimer();
-            updateProgress(5, '正在提交任务...', 'pending');
+            // Set initial step
+            updateStep(1);
+            updateProgress(5, '正在提交任务...');
 
             try {
                 const response = await fetch('/api/generate', {
@@ -529,7 +521,8 @@
                 }
 
                 currentJobId = data.job_id;
-                updateProgress(10, '任务已提交，等待处理...', 'queued');
+                updateStep(1); // 素材收集中
+                updateProgress(15, '素材收集中...');
                 
                 // Start polling
                 startProgressPolling();
@@ -538,6 +531,89 @@
                 showError(error.message);
                 resetUI();
             }
+        }
+
+        // Poll Progress
+        function startProgressPolling() {
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/progress/${currentJobId}`);
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.error || '获取进度失败');
+                    }
+                    
+                    // Map backend stages to frontend steps
+                    // Step 1: 素材收集中 (fetching) - 5-35%
+                    // Step 2: 手稿准备中 (llm_processing) - 35-75%
+                    // Step 3: 播音员上线中 (tts_generating) - 75-100%
+                    
+                    const stage = data.stage || '';
+                    const progress = data.progress || 0;
+                    
+                    if (stage === 'fetching' || progress < 35) {
+                        updateStep(1);
+                        updateProgress(Math.max(5, Math.min(35, progress)), '素材收集中...');
+                    } else if (stage === 'llm_processing' || progress < 75) {
+                        updateStep(2);
+                        updateProgress(Math.max(35, Math.min(75, progress)), '手稿准备中...');
+                    } else if (stage === 'tts_generating' || progress < 100) {
+                        updateStep(3);
+                        updateProgress(Math.max(75, Math.min(95, progress)), '播音员上线中...');
+                    }
+                    
+                    // Check completion
+                    if (data.status === 'completed') {
+                        clearInterval(progressInterval);
+                        updateStep(3, true); // Complete all steps
+                        updateProgress(100, '完成！');
+                        showResult(data.result);
+                        loadEpisodes();
+                    } else if (data.status === 'failed') {
+                        clearInterval(progressInterval);
+                        showError(data.error);
+                        resetUI();
+                    } else if (data.status === 'cancelled') {
+                        clearInterval(progressInterval);
+                        showToast('任务已取消');
+                        resetUI();
+                    }
+                    
+                } catch (error) {
+                    console.error('Progress polling error:', error);
+                }
+            }, 2000);
+        }
+
+        // Update Step
+        function updateStep(stepNumber, completeAll = false) {
+            // Reset all steps
+            for (let i = 1; i <= 3; i++) {
+                const step = document.getElementById(`step-${i}`);
+                step.classList.remove('active', 'completed');
+            }
+            
+            if (completeAll) {
+                // Complete all steps
+                for (let i = 1; i <= 3; i++) {
+                    document.getElementById(`step-${i}`).classList.add('completed');
+                }
+            } else {
+                // Mark previous steps as completed
+                for (let i = 1; i < stepNumber; i++) {
+                    document.getElementById(`step-${i}`).classList.add('completed');
+                }
+                // Mark current step as active
+                document.getElementById(`step-${stepNumber}`).classList.add('active');
+            }
+        }
+
+        // Update Progress
+        function updateProgress(percent, status) {
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-percent').textContent = percent + '%';
+            document.getElementById('progress-status').textContent = status;
         }
 
         // Cancel Generation
@@ -549,166 +625,48 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    showToast('任务已取消', 'success');
+                    showToast('任务已取消');
                     clearInterval(progressInterval);
-                    clearInterval(elapsedInterval);
                     resetUI();
-                } else {
-                    showToast(data.error || '取消失败', 'error');
                 }
             } catch (error) {
-                showToast('取消请求失败', 'error');
+                showToast('取消失败');
             }
-        }
-
-        // Poll Progress
-        function startProgressPolling() {
-            let lastProgress = 0;
-            let stallCount = 0;
-            
-            progressInterval = setInterval(async () => {
-                try {
-                    const response = await fetch(`/api/progress/${currentJobId}`);
-                    const data = await response.json();
-                    
-                    if (!response.ok) {
-                        throw new Error(data.error || '获取进度失败');
-                    }
-                    
-                    // Check for timeout warning
-                    if (data.timeout_warning) {
-                        showTimeoutWarning(data.timeout_warning);
-                    }
-                    
-                    // Update progress
-                    updateProgress(data.progress, data.message, data.stage);
-                    updateStageIndicators(data.stage);
-                    
-                    // Detect stalled progress
-                    if (data.progress === lastProgress) {
-                        stallCount++;
-                        if (stallCount > 15) {  // 30 seconds no progress
-                            showTimeoutWarning('进度长时间未更新，可能遇到网络问题...');
-                        }
-                    } else {
-                        stallCount = 0;
-                        lastProgress = data.progress;
-                    }
-                    
-                    // Check completion
-                    if (data.status === 'completed') {
-                        clearInterval(progressInterval);
-                        clearInterval(elapsedInterval);
-                        showResult(data.result);
-                        loadEpisodes();
-                    } else if (data.status === 'failed') {
-                        clearInterval(progressInterval);
-                        clearInterval(elapsedInterval);
-                        showError(data.error, data.error_details);
-                        resetUI();
-                    } else if (data.status === 'cancelled') {
-                        clearInterval(progressInterval);
-                        clearInterval(elapsedInterval);
-                        showToast('任务已取消', 'success');
-                        resetUI();
-                    }
-                    
-                } catch (error) {
-                    console.error('Progress polling error:', error);
-                }
-            }, 2000);
-        }
-
-        // Update Progress UI
-        function updateProgress(percent, message, stage) {
-            document.getElementById('progress-percent').textContent = percent + '%';
-            document.getElementById('progress-fill').style.width = percent + '%';
-            document.getElementById('progress-message').textContent = message;
-        }
-
-        // Update Stage Indicators
-        function updateStageIndicators(currentStage) {
-            const stages = ['fetch', 'llm', 'tts'];
-            const stageMap = {
-                'fetching': 'fetch',
-                'llm_processing': 'llm',
-                'tts_generating': 'tts'
-            };
-            
-            let reachedCurrent = false;
-            stages.forEach(stage => {
-                const el = document.getElementById(`stage-${stage}`);
-                el.classList.remove('active', 'completed');
-                
-                if (stage === stageMap[currentStage]) {
-                    el.classList.add('active');
-                    reachedCurrent = true;
-                } else if (!reachedCurrent) {
-                    el.classList.add('completed');
-                }
-            });
-        }
-
-        // Elapsed Time Timer
-        function startElapsedTimer() {
-            elapsedInterval = setInterval(() => {
-                const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                document.getElementById('elapsed-time').textContent = `已用时: ${formatTime(elapsed)}`;
-            }, 1000);
-        }
-
-        // Show/Hide Progress
-        function showProgress() {
-            document.getElementById('progress-container').classList.add('active');
-            document.getElementById('result-container').classList.remove('active');
-            document.getElementById('error-box').classList.remove('show');
-            document.getElementById('timeout-warning').classList.remove('show');
-        }
-
-        // Show Timeout Warning
-        function showTimeoutWarning(message) {
-            const warning = document.getElementById('timeout-warning');
-            document.getElementById('timeout-message').textContent = message;
-            warning.classList.add('show');
-        }
-
-        // Show Error
-        function showError(message, details) {
-            document.getElementById('error-box').classList.add('show');
-            document.getElementById('error-message').textContent = message;
-            document.getElementById('error-details').textContent = details ? JSON.stringify(details, null, 2) : '';
         }
 
         // Show Result
         function showResult(result) {
             document.getElementById('progress-container').classList.remove('active');
             document.getElementById('result-container').classList.add('active');
-            
             currentAudioUrl = result.audio_url;
             document.getElementById('result-audio').src = result.audio_url;
-            
             resetUI();
-            showToast('播客生成成功！', 'success');
+            showToast('播客生成成功！');
+        }
+
+        // Show Error
+        function showError(message) {
+            document.getElementById('error-box').classList.add('show');
+            document.getElementById('error-message').textContent = message;
         }
 
         // Reset UI
         function resetUI() {
             document.getElementById('generate-btn').style.display = 'inline-flex';
             document.getElementById('cancel-btn').style.display = 'none';
-            document.getElementById('progress-container').classList.remove('active');
             
-            // Reset stages
-            document.querySelectorAll('.stage-item').forEach(el => {
-                el.classList.remove('active', 'completed');
-            });
+            // Reset steps
+            for (let i = 1; i <= 3; i++) {
+                document.getElementById(`step-${i}`).classList.remove('active', 'completed');
+            }
         }
 
         // Copy URL
         function copyUrl() {
             if (!currentAudioUrl) return;
             navigator.clipboard.writeText(window.location.origin + '/' + currentAudioUrl)
-                .then(() => showToast('链接已复制', 'success'))
-                .catch(() => showToast('复制失败', 'error'));
+                .then(() => showToast('链接已复制'))
+                .catch(() => showToast('复制失败'));
         }
 
         // Download Audio
@@ -718,7 +676,7 @@
             link.href = currentAudioUrl;
             link.download = 'podcast-' + Date.now() + '.mp3';
             link.click();
-            showToast('开始下载...', 'success');
+            showToast('开始下载...');
         }
 
         // Load Episodes
@@ -746,7 +704,7 @@
                         <div class="episode-content">
                             <div style="font-weight:600;">${escapeHtml(ep.title)}</div>
                             <div style="font-size:0.85rem;color:var(--text-light);">
-                                ${formatDate(ep.created)} · ${formatDuration(ep.duration)} · ${formatSize(ep.size_mb)}
+                                ${formatDate(ep.created)}
                             </div>
                         </div>
                         <div style="display:flex;gap:8px;">
@@ -769,10 +727,10 @@
         }
 
         // Show Toast
-        function showToast(message, type) {
+        function showToast(message) {
             const toast = document.getElementById('toast');
             toast.textContent = message;
-            toast.className = 'toast show ' + type;
+            toast.className = 'toast show';
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
@@ -787,27 +745,13 @@
             return div.innerHTML;
         }
 
-        function formatTime(seconds) {
-            if (seconds < 60) return seconds + '秒';
-            if (seconds < 3600) return Math.floor(seconds / 60) + '分' + (seconds % 60) + '秒';
-            return Math.floor(seconds / 3600) + '时' + Math.floor((seconds % 3600) / 60) + '分';
-        }
-
         function formatDate(dateString) {
-            return new Date(dateString).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        }
-
-        function formatDuration(seconds) {
-            if (!seconds) return '0:00';
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${mins}:${secs.toString().padStart(2, '0')}`;
-        }
-
-        function formatSize(mb) {
-            if (!mb) return '0 MB';
-            if (mb < 1) return (mb * 1024).toFixed(0) + ' KB';
-            return mb.toFixed(1) + ' MB';
+            return new Date(dateString).toLocaleDateString('zh-CN', { 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
         }
 
         // Enter key to submit

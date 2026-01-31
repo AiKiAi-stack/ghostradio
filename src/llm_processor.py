@@ -2,10 +2,10 @@
 LLM 内容处理模块
 使用 Provider 架构支持多种 LLM API
 
-设计原则：
-- 依赖注入：通过构造函数注入配置和 Provider
-- 不可变配置：初始化后不修改配置
-- 清晰的错误分类
+改进：
+- 集成模型健康检查
+- 模型故障时自动切换
+- 前端用户无感知
 """
 
 import os
@@ -15,6 +15,9 @@ from typing import Any, Dict, List, Optional
 from .providers import create_provider, ProviderFactory
 from .prompt_manager import PromptManager, get_prompt_manager
 from .model_health_checker import get_health_checker
+from .logger import get_logger
+
+logger = get_logger("llm_processor")
 
 
 class LLMResult(TypedDict):  # type: ignore[misc]
@@ -45,7 +48,7 @@ class LLMProcessor:
     职责：
     - 管理 LLM Provider 生命周期
     - 处理文章内容生成播客脚本
-    - 格式化 Prompt
+    - 模型故障时自动切换（前端无感知）
     """
     
     def __init__(
@@ -56,50 +59,23 @@ class LLMProcessor:
         """
         初始化 LLM 处理器
         
-        Args:
-            config: 配置字典
-            prompt_manager: Prompt 管理器实例
-            
-        Raises:
-            ValueError: 配置无效
+        从健康检查器获取当前可用模型配置
         """
-        self._config: Dict[str, Any] = config.copy()
         self._prompt_manager = prompt_manager
         
-        # 解析 API Key
-        self._resolve_api_key()
+        # 从健康检查器获取当前模型配置
+        health_checker = get_health_checker()
+        try:
+            self._config = health_checker.get_llm_config()
+            logger.info(f"Using LLM model: {self._config.get('model')}")
+        except RuntimeError as e:
+            raise LLMError(f"No LLM models available: {e}")
         
         # 初始化 Provider
         self._init_provider()
     
-    def _resolve_api_key(self) -> None:
-        """从环境变量解析 API Key"""
-        api_key_env = self._config.get('api_key_env')
-        if api_key_env and not self._config.get('api_key'):
-            api_key = os.environ.get(api_key_env)
-            if api_key:
-                self._config['api_key'] = api_key
-    
     def _init_provider(self) -> None:
-        """初始化 LLM Provider，带健康检查"""
-        from logger import get_logger
-        logger = get_logger("llm_processor")
-        
-        # 健康检查并自动切换
-        health_checker = get_health_checker()
-        final_config, switched, error = health_checker.check_and_switch("llm", self._config)
-        
-        if error:
-            raise LLMError(f"No healthy LLM provider available: {error}")
-        
-        if switched:
-            original = self._config.get('provider')
-            new_provider = final_config.get('provider')
-            logger.warning(
-                f"Switched LLM provider from {original} to {new_provider} due to health check"
-            )
-            self._config = final_config
-        
+        """初始化 LLM Provider"""
         provider_name = self._config.get('provider', 'openai')
         
         try:
@@ -113,45 +89,83 @@ class LLMProcessor:
         """
         处理文章内容，生成播客脚本
         
-        Args:
-            title: 文章标题
-            content: 文章内容
-            
+        如果当前模型失败，自动切换到下一个可用模型重试
+        """
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                # 加载 Prompt
+                system_prompt = self._load_system_prompt()
+                user_prompt = self._build_user_prompt(title, content)
+                
+                # 调用 LLM
+                messages = self._provider.format_messages(system_prompt, user_prompt)
+                result = self._provider.chat_completion(messages)
+                
+                if result['success']:
+                    return LLMResult(
+                        success=True,
+                        script=result['content'],
+                        tokens_used=result.get('tokens_used', 0),
+                        error=""
+                    )
+                else:
+                    # API 返回错误，可能是模型问题
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.warning(f"LLM API error: {error_msg}")
+                    
+                    # 尝试切换模型
+                    if self._try_switch_model():
+                        continue  # 用新模型重试
+                    else:
+                        return LLMResult(
+                            success=False,
+                            script="",
+                            tokens_used=0,
+                            error=error_msg
+                        )
+                
+            except Exception as e:
+                last_error = e
+                logger.error(f"LLM processing error (attempt {attempt + 1}): {e}")
+                
+                # 尝试切换模型
+                if self._try_switch_model():
+                    continue  # 用新模型重试
+                else:
+                    break  # 没有可用模型了
+        
+        # 所有尝试都失败
+        return LLMResult(
+            success=False,
+            script="",
+            tokens_used=0,
+            error=f"Failed after {max_retries} attempts: {str(last_error)}"
+        )
+    
+    def _try_switch_model(self) -> bool:
+        """
+        尝试切换到下一个可用模型
+        
         Returns:
-            LLMResult: 处理结果
+            是否成功切换
         """
         try:
-            # 加载 Prompt
-            system_prompt = self._load_system_prompt()
-            user_prompt = self._build_user_prompt(title, content)
+            health_checker = get_health_checker()
+            new_config = health_checker.report_llm_failure()
             
-            # 调用 LLM
-            messages = self._provider.format_messages(system_prompt, user_prompt)
-            result = self._provider.chat_completion(messages)
+            # 更新配置并重新初始化 provider
+            self._config = new_config
+            self._init_provider()
             
-            if result['success']:
-                return LLMResult(
-                    success=True,
-                    script=result['content'],
-                    tokens_used=result.get('tokens_used', 0),
-                    error=""
-                )
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                return LLMResult(
-                    success=False,
-                    script="",
-                    tokens_used=0,
-                    error=error_msg
-                )
-                
-        except Exception as e:
-            return LLMResult(
-                success=False,
-                script="",
-                tokens_used=0,
-                error=f"LLM processing error: {str(e)}"
-            )
+            logger.info(f"Switched to model: {new_config.get('model')}")
+            return True
+            
+        except RuntimeError as e:
+            logger.error(f"Failed to switch LLM model: {e}")
+            return False
     
     def _load_system_prompt(self) -> str:
         """加载系统提示词"""
@@ -174,7 +188,7 @@ class LLMProcessor:
         """获取当前 Provider 信息"""
         return ProviderInfo(
             name=self._provider.get_provider_name(),
-            model=self._provider.model or "",
+            model=self._config.get('model', ''),
             available_models=self._provider.get_model_list()
         )
     
@@ -185,10 +199,5 @@ class LLMProcessor:
 
 
 def get_available_providers() -> List[str]:
-    """
-    获取所有可用的 LLM Provider 列表
-    
-    Returns:
-        Provider 名称列表
-    """
+    """获取所有可用的 LLM Provider 列表"""
     return ProviderFactory.get_available_providers()
