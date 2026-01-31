@@ -23,12 +23,12 @@
             --text: #2d3748;
             --text-light: #718096;
             --border: #e2e8f0;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--bg);
             color: var(--text);
             line-height: 1.6;
@@ -56,15 +56,6 @@
             font-size: 2.5rem;
             font-weight: 700;
             margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-        }
-
-        .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
         }
 
         /* Cards */
@@ -81,7 +72,6 @@
             font-size: 1.25rem;
             font-weight: 600;
             margin-bottom: 16px;
-            color: var(--text);
             display: flex;
             align-items: center;
             gap: 8px;
@@ -94,18 +84,6 @@
             gap: 16px;
         }
 
-        .model-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .model-label {
-            font-weight: 500;
-            color: var(--text);
-            font-size: 0.9rem;
-        }
-
         .model-select {
             padding: 12px 16px;
             border: 2px solid var(--border);
@@ -113,28 +91,7 @@
             font-size: 1rem;
             background: white;
             cursor: pointer;
-            transition: all 0.2s;
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23667eea' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 16px center;
-            padding-right: 40px;
-        }
-
-        .model-select:hover {
-            border-color: var(--primary);
-        }
-
-        .model-select:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .model-info {
-            font-size: 0.85rem;
-            color: var(--text-light);
-            margin-top: 4px;
+            width: 100%;
         }
 
         /* URL Input */
@@ -151,17 +108,6 @@
             border: 2px solid var(--border);
             border-radius: 10px;
             font-size: 1rem;
-            transition: all 0.2s;
-        }
-
-        .url-input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .url-input::placeholder {
-            color: var(--text-light);
         }
 
         /* Buttons */
@@ -183,30 +129,14 @@
             color: white;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
+        .btn-danger {
+            background: var(--error);
+            color: white;
         }
 
-        .btn-primary:disabled {
+        .btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
-            transform: none;
-        }
-
-        .btn-secondary {
-            background: var(--bg);
-            color: var(--text);
-            border: 2px solid var(--border);
-        }
-
-        .btn-secondary:hover {
-            background: var(--border);
-        }
-
-        .btn-icon {
-            padding: 10px 16px;
-            font-size: 0.9rem;
         }
 
         /* Progress */
@@ -226,38 +156,106 @@
             margin-bottom: 8px;
         }
 
-        .progress-label {
-            font-weight: 500;
-            color: var(--text);
-        }
-
-        .progress-percent {
-            font-weight: 600;
-            color: var(--primary);
-        }
-
         .progress-bar {
-            height: 8px;
+            height: 10px;
             background: var(--border);
-            border-radius: 4px;
+            border-radius: 5px;
             overflow: hidden;
+            position: relative;
         }
 
         .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
-            border-radius: 4px;
-            transition: width 0.3s ease;
+            border-radius: 5px;
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
             width: 0%;
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
         }
 
         .progress-status {
-            margin-top: 8px;
-            font-size: 0.9rem;
-            color: var(--text-light);
+            margin-top: 12px;
+            font-size: 0.95rem;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        /* Result Section */
+        .progress-time {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-left: auto;
+        }
+
+        /* Warning & Error */
+        .warning-box {
+            background: #fffaf0;
+            border: 2px solid var(--warning);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-top: 12px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            color: #c05621;
+        }
+
+        .warning-box.show {
+            display: flex;
+        }
+
+        .error-box {
+            background: #fff5f5;
+            border: 2px solid var(--error);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+
+        .error-box.show {
+            display: block;
+        }
+
+        .error-title {
+            font-weight: 600;
+            color: var(--error);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .error-details {
+            font-size: 0.9rem;
+            color: var(--text);
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Result */
         .result-container {
             display: none;
             margin-top: 20px;
@@ -274,128 +272,31 @@
             padding: 20px;
         }
 
-        .result-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: var(--success);
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* Audio Player */
-        .audio-section {
-            margin-bottom: 20px;
-        }
-
-        .audio-label {
-            font-weight: 500;
-            margin-bottom: 8px;
-            color: var(--text);
-        }
-
         .audio-player {
             width: 100%;
-            height: 50px;
-            border-radius: 8px;
+            margin: 16px 0;
         }
 
-        /* Action Buttons */
         .action-buttons {
             display: flex;
             gap: 12px;
             flex-wrap: wrap;
         }
 
-        .btn-copy {
-            background: var(--primary);
-            color: white;
-        }
-
-        .btn-download {
-            background: var(--success);
-            color: white;
-        }
-
-        .btn-rss {
-            background: #ff6600;
-            color: white;
-        }
-
-        /* Episodes List */
-        .episodes-section {
-            margin-top: 30px;
-        }
-
+        /* Episodes */
         .episode-item {
             display: flex;
             align-items: center;
             gap: 16px;
             padding: 16px;
             border-bottom: 1px solid var(--border);
-            transition: background 0.2s;
-        }
-
-        .episode-item:hover {
-            background: var(--bg);
-        }
-
-        .episode-item:last-child {
-            border-bottom: none;
-        }
-
-        .episode-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            flex-shrink: 0;
         }
 
         .episode-content {
             flex: 1;
         }
 
-        .episode-title {
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 4px;
-        }
-
-        .episode-meta {
-            font-size: 0.85rem;
-            color: var(--text-light);
-        }
-
-        .episode-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .btn-small {
-            padding: 8px 12px;
-            font-size: 0.85rem;
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-light);
-        }
-
-        .empty-state-icon {
-            font-size: 4rem;
-            margin-bottom: 16px;
-            opacity: 0.5;
-        }
-
-        /* Toast Notification */
+        /* Toast */
         .toast {
             position: fixed;
             bottom: 20px;
@@ -406,8 +307,6 @@
             border-radius: 10px;
             box-shadow: var(--shadow-lg);
             display: none;
-            align-items: center;
-            gap: 12px;
             z-index: 1000;
             animation: slideIn 0.3s ease;
         }
@@ -416,31 +315,17 @@
             display: flex;
         }
 
-        .toast.success {
-            background: var(--success);
-        }
-
-        .toast.error {
-            background: var(--error);
-        }
-
         @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
 
-        /* Loading Spinner */
+        /* Spinner */
         .spinner {
             display: inline-block;
             width: 20px;
             height: 20px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
+            border: 3px solid rgba(255,255,255,0.3);
             border-radius: 50%;
             border-top-color: white;
             animation: spin 1s ease-in-out infinite;
@@ -450,33 +335,30 @@
             to { transform: rotate(360deg); }
         }
 
-        /* Responsive */
-        @media (max-width: 640px) {
-            .header h1 {
-                font-size: 1.75rem;
-            }
+        /* Stage indicator */
+        .stage-indicator {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 0.85rem;
+        }
 
-            .model-grid {
-                grid-template-columns: 1fr;
-            }
+        .stage-item {
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: var(--border);
+            color: var(--text-light);
+            transition: all 0.3s;
+        }
 
-            .url-input-group {
-                flex-direction: column;
-            }
+        .stage-item.active {
+            background: var(--primary);
+            color: white;
+        }
 
-            .action-buttons {
-                justify-content: center;
-            }
-
-            .episode-item {
-                flex-direction: column;
-                text-align: center;
-            }
-
-            .episode-actions {
-                width: 100%;
-                justify-content: center;
-            }
+        .stage-item.completed {
+            background: var(--success);
+            color: white;
         }
     </style>
 </head>
@@ -485,29 +367,27 @@
         <!-- Header -->
         <div class="header">
             <h1>🎙️ GhostRadio</h1>
-            <p>AI 驱动的播客生成器 - 将文章转换为语音播客</p>
+            <p>AI 驱动的播客生成器</p>
         </div>
 
         <!-- Model Selection -->
         <div class="card">
             <div class="card-title">⚙️ 模型配置</div>
             <div class="model-grid">
-                <div class="model-group">
-                    <label class="model-label">总结模型 (LLM)</label>
+                <div>
+                    <label style="display:block;margin-bottom:8px;font-weight:500;">总结模型</label>
                     <select class="model-select" id="llm-model">
-                        <option value="nvidia">NVIDIA (推荐)</option>
-                        <option value="openai">OpenAI</option>
+                        <option value="nvidia">🚀 NVIDIA (推荐)</option>
+                        <option value="openai">🤖 OpenAI</option>
                     </select>
-                    <div class="model-info">选择用于文章总结的 AI 模型</div>
                 </div>
-                <div class="model-group">
-                    <label class="model-label">语音模型 (TTS)</label>
+                <div>
+                    <label style="display:block;margin-bottom:8px;font-weight:500;">语音模型</label>
                     <select class="model-select" id="tts-model">
-                        <option value="volcengine">火山引擎 (推荐)</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="edge-tts">Edge TTS (免费)</option>
+                        <option value="volcengine">🔥 火山引擎 (推荐)</option>
+                        <option value="openai">🗣️ OpenAI</option>
+                        <option value="edge-tts">💰 Edge TTS (免费)</option>
                     </select>
-                    <div class="model-info">选择用于语音合成的模型</div>
                 </div>
             </div>
         </div>
@@ -516,80 +396,84 @@
         <div class="card">
             <div class="card-title">🔗 输入文章链接</div>
             <div class="url-input-group">
-                <input 
-                    type="url" 
-                    class="url-input" 
-                    id="url-input" 
-                    placeholder="https://example.com/article"
-                    autocomplete="off"
-                >
+                <input type="url" class="url-input" id="url-input" placeholder="https://example.com/article">
                 <button class="btn btn-primary" id="generate-btn" onclick="startGeneration()">
                     <span>🚀 生成播客</span>
+                </button>
+                <button class="btn btn-danger" id="cancel-btn" onclick="cancelGeneration()" style="display:none;">
+                    <span>⏹️ 取消</span>
                 </button>
             </div>
 
             <!-- Progress -->
             <div class="progress-container" id="progress-container">
                 <div class="progress-header">
-                    <span class="progress-label">生成进度</span>
-                    <span class="progress-percent" id="progress-percent">0%</span>
+                    <span style="font-weight:600;">生成进度</span>
+                    <span style="font-weight:600;color:var(--primary);" id="progress-percent">0%</span>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-fill" id="progress-fill"></div>
                 </div>
-                <div class="progress-status" id="progress-status">准备开始...</div>
+                <div class="progress-status">
+                    <span id="progress-message">准备开始...</span>
+                    <span class="progress-time" id="elapsed-time">已用时: 0秒</span>
+                </div>
+                
+                <!-- Stage Indicators -->
+                <div class="stage-indicator">
+                    <span class="stage-item" id="stage-fetch">📥 获取内容</span>
+                    <span class="stage-item" id="stage-llm">🧠 AI总结</span>
+                    <span class="stage-item" id="stage-tts">🔊 语音合成</span>
+                </div>
+
+                <!-- Timeout Warning -->
+                <div class="warning-box" id="timeout-warning">
+                    <span>⚠️</span>
+                    <span id="timeout-message">处理时间较长，请耐心等待...</span>
+                </div>
+            </div>
+
+            <!-- Error Display -->
+            <div class="error-box" id="error-box">
+                <div class="error-title">
+                    <span>❌</span>
+                    <span>生成失败</span>
+                </div>
+                <div id="error-message"></div>
+                <div class="error-details" id="error-details"></div>
             </div>
 
             <!-- Result -->
             <div class="result-container" id="result-container">
                 <div class="result-card">
-                    <div class="result-title">
+                    <div style="font-weight:600;color:var(--success);margin-bottom:16px;display:flex;align-items:center;gap:8px;">
                         <span>✅</span>
                         <span>生成成功！</span>
                     </div>
-                    
-                    <div class="audio-section">
-                        <div class="audio-label">🎧 在线试听</div>
-                        <audio class="audio-player" id="result-audio" controls>
-                            <source src="" type="audio/mpeg">
-                            您的浏览器不支持音频播放。
-                        </audio>
-                    </div>
-
+                    <audio class="audio-player" id="result-audio" controls></audio>
                     <div class="action-buttons">
-                        <button class="btn btn-icon btn-copy" onclick="copyUrl()">
-                            <span>📋</span>
-                            <span>复制链接</span>
-                        </button>
-                        <button class="btn btn-icon btn-download" onclick="downloadAudio()">
-                            <span>⬇️</span>
-                            <span>下载 MP3</span>
-                        </button>
-                        <a href="episodes/feed.xml" class="btn btn-icon btn-rss" target="_blank">
-                            <span>📻</span>
-                            <span>RSS 订阅</span>
-                        </a>
+                        <button class="btn btn-primary" onclick="copyUrl()">📋 复制链接</button>
+                        <button class="btn btn-primary" onclick="downloadAudio()">⬇️ 下载 MP3</button>
+                        <a href="episodes/feed.xml" class="btn btn-primary" target="_blank">📻 RSS</a>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Episodes List -->
-        <div class="card episodes-section">
+        <!-- Episodes -->
+        <div class="card">
             <div class="card-title">📚 历史节目</div>
             <div id="episodes-list">
-                <div class="empty-state">
-                    <div class="empty-state-icon">🎙️</div>
-                    <h3>暂无节目</h3>
-                    <p>提交 URL 后，节目将自动显示在这里</p>
+                <div style="text-align:center;padding:40px;color:var(--text-light);">
+                    <div style="font-size:3rem;margin-bottom:16px;">🎙️</div>
+                    <p>暂无节目</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Toast Notification -->
+    <!-- Toast -->
     <div class="toast" id="toast">
-        <span id="toast-icon">✓</span>
         <span id="toast-message">操作成功</span>
     </div>
 
@@ -597,7 +481,9 @@
         // State
         let currentJobId = null;
         let progressInterval = null;
+        let elapsedInterval = null;
         let currentAudioUrl = '';
+        let startTime = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
@@ -609,13 +495,7 @@
             const urlInput = document.getElementById('url-input');
             const url = urlInput.value.trim();
             
-            if (!url) {
-                showToast('请输入文章链接', 'error');
-                urlInput.focus();
-                return;
-            }
-
-            if (!isValidUrl(url)) {
+            if (!url || !isValidUrl(url)) {
                 showToast('请输入有效的 URL', 'error');
                 return;
             }
@@ -623,64 +503,116 @@
             const llmModel = document.getElementById('llm-model').value;
             const ttsModel = document.getElementById('tts-model').value;
             
-            // UI Updates
-            const generateBtn = document.getElementById('generate-btn');
-            generateBtn.disabled = true;
-            generateBtn.innerHTML = '<span class="spinner"></span><span>生成中...</span>';
+            // Reset UI
+            resetUI();
             
+            // UI Updates
+            document.getElementById('generate-btn').style.display = 'none';
+            document.getElementById('cancel-btn').style.display = 'inline-flex';
             showProgress();
-            updateProgress(10, '正在提交任务...');
+            
+            startTime = Date.now();
+            startElapsedTimer();
+            updateProgress(5, '正在提交任务...', 'pending');
 
             try {
-                // Submit job
                 const response = await fetch('/api/generate', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        url: url,
-                        llm_model: llmModel,
-                        tts_model: ttsModel
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, llm_model: llmModel, tts_model: ttsModel })
                 });
 
+                const data = await response.json();
+                
                 if (!response.ok) {
-                    throw new Error('提交失败');
+                    throw new Error(data.error || '提交失败');
                 }
 
-                const data = await response.json();
                 currentJobId = data.job_id;
+                updateProgress(10, '任务已提交，等待处理...', 'queued');
                 
-                updateProgress(20, '任务已提交，正在处理...');
-                
-                // Start polling progress
+                // Start polling
                 startProgressPolling();
                 
             } catch (error) {
-                showToast('提交失败: ' + error.message, 'error');
+                showError(error.message);
                 resetUI();
+            }
+        }
+
+        // Cancel Generation
+        async function cancelGeneration() {
+            if (!currentJobId) return;
+            
+            try {
+                const response = await fetch(`/api/cancel/${currentJobId}`, { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast('任务已取消', 'success');
+                    clearInterval(progressInterval);
+                    clearInterval(elapsedInterval);
+                    resetUI();
+                } else {
+                    showToast(data.error || '取消失败', 'error');
+                }
+            } catch (error) {
+                showToast('取消请求失败', 'error');
             }
         }
 
         // Poll Progress
         function startProgressPolling() {
+            let lastProgress = 0;
+            let stallCount = 0;
+            
             progressInterval = setInterval(async () => {
                 try {
                     const response = await fetch(`/api/progress/${currentJobId}`);
                     const data = await response.json();
                     
-                    updateProgress(data.progress, data.status);
+                    if (!response.ok) {
+                        throw new Error(data.error || '获取进度失败');
+                    }
                     
+                    // Check for timeout warning
+                    if (data.timeout_warning) {
+                        showTimeoutWarning(data.timeout_warning);
+                    }
+                    
+                    // Update progress
+                    updateProgress(data.progress, data.message, data.stage);
+                    updateStageIndicators(data.stage);
+                    
+                    // Detect stalled progress
+                    if (data.progress === lastProgress) {
+                        stallCount++;
+                        if (stallCount > 15) {  // 30 seconds no progress
+                            showTimeoutWarning('进度长时间未更新，可能遇到网络问题...');
+                        }
+                    } else {
+                        stallCount = 0;
+                        lastProgress = data.progress;
+                    }
+                    
+                    // Check completion
                     if (data.status === 'completed') {
                         clearInterval(progressInterval);
+                        clearInterval(elapsedInterval);
                         showResult(data.result);
                         loadEpisodes();
                     } else if (data.status === 'failed') {
                         clearInterval(progressInterval);
-                        showToast('生成失败: ' + data.error, 'error');
+                        clearInterval(elapsedInterval);
+                        showError(data.error, data.error_details);
+                        resetUI();
+                    } else if (data.status === 'cancelled') {
+                        clearInterval(progressInterval);
+                        clearInterval(elapsedInterval);
+                        showToast('任务已取消', 'success');
                         resetUI();
                     }
+                    
                 } catch (error) {
                     console.error('Progress polling error:', error);
                 }
@@ -688,16 +620,63 @@
         }
 
         // Update Progress UI
-        function updateProgress(percent, status) {
+        function updateProgress(percent, message, stage) {
             document.getElementById('progress-percent').textContent = percent + '%';
             document.getElementById('progress-fill').style.width = percent + '%';
-            document.getElementById('progress-status').textContent = status;
+            document.getElementById('progress-message').textContent = message;
         }
 
-        // Show Progress Section
+        // Update Stage Indicators
+        function updateStageIndicators(currentStage) {
+            const stages = ['fetch', 'llm', 'tts'];
+            const stageMap = {
+                'fetching': 'fetch',
+                'llm_processing': 'llm',
+                'tts_generating': 'tts'
+            };
+            
+            let reachedCurrent = false;
+            stages.forEach(stage => {
+                const el = document.getElementById(`stage-${stage}`);
+                el.classList.remove('active', 'completed');
+                
+                if (stage === stageMap[currentStage]) {
+                    el.classList.add('active');
+                    reachedCurrent = true;
+                } else if (!reachedCurrent) {
+                    el.classList.add('completed');
+                }
+            });
+        }
+
+        // Elapsed Time Timer
+        function startElapsedTimer() {
+            elapsedInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                document.getElementById('elapsed-time').textContent = `已用时: ${formatTime(elapsed)}`;
+            }, 1000);
+        }
+
+        // Show/Hide Progress
         function showProgress() {
             document.getElementById('progress-container').classList.add('active');
             document.getElementById('result-container').classList.remove('active');
+            document.getElementById('error-box').classList.remove('show');
+            document.getElementById('timeout-warning').classList.remove('show');
+        }
+
+        // Show Timeout Warning
+        function showTimeoutWarning(message) {
+            const warning = document.getElementById('timeout-warning');
+            document.getElementById('timeout-message').textContent = message;
+            warning.classList.add('show');
+        }
+
+        // Show Error
+        function showError(message, details) {
+            document.getElementById('error-box').classList.add('show');
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-details').textContent = details ? JSON.stringify(details, null, 2) : '';
         }
 
         // Show Result
@@ -706,9 +685,7 @@
             document.getElementById('result-container').classList.add('active');
             
             currentAudioUrl = result.audio_url;
-            
-            const audioPlayer = document.getElementById('result-audio');
-            audioPlayer.src = result.audio_url;
+            document.getElementById('result-audio').src = result.audio_url;
             
             resetUI();
             showToast('播客生成成功！', 'success');
@@ -716,31 +693,31 @@
 
         // Reset UI
         function resetUI() {
-            const generateBtn = document.getElementById('generate-btn');
-            generateBtn.disabled = false;
-            generateBtn.innerHTML = '<span>🚀</span><span>生成播客</span>';
+            document.getElementById('generate-btn').style.display = 'inline-flex';
+            document.getElementById('cancel-btn').style.display = 'none';
+            document.getElementById('progress-container').classList.remove('active');
+            
+            // Reset stages
+            document.querySelectorAll('.stage-item').forEach(el => {
+                el.classList.remove('active', 'completed');
+            });
         }
 
         // Copy URL
         function copyUrl() {
             if (!currentAudioUrl) return;
-            
             navigator.clipboard.writeText(window.location.origin + '/' + currentAudioUrl)
-                .then(() => showToast('链接已复制到剪贴板', 'success'))
+                .then(() => showToast('链接已复制', 'success'))
                 .catch(() => showToast('复制失败', 'error'));
         }
 
         // Download Audio
         function downloadAudio() {
             if (!currentAudioUrl) return;
-            
             const link = document.createElement('a');
             link.href = currentAudioUrl;
-            link.download = 'podcast-' + new Date().getTime() + '.mp3';
-            document.body.appendChild(link);
+            link.download = 'podcast-' + Date.now() + '.mp3';
             link.click();
-            document.body.removeChild(link);
-            
             showToast('开始下载...', 'success');
         }
 
@@ -755,10 +732,9 @@
                 
                 if (episodes.length === 0) {
                     container.innerHTML = `
-                        <div class="empty-state">
-                            <div class="empty-state-icon">🎙️</div>
-                            <h3>暂无节目</h3>
-                            <p>提交 URL 后，节目将自动显示在这里</p>
+                        <div style="text-align:center;padding:40px;color:var(--text-light);">
+                            <div style="font-size:3rem;margin-bottom:16px;">🎙️</div>
+                            <p>暂无节目</p>
                         </div>
                     `;
                     return;
@@ -766,20 +742,16 @@
                 
                 container.innerHTML = episodes.map(ep => `
                     <div class="episode-item">
-                        <div class="episode-icon">🎵</div>
+                        <div style="width:48px;height:48px;background:linear-gradient(135deg,var(--primary),var(--secondary));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;">🎵</div>
                         <div class="episode-content">
-                            <div class="episode-title">${escapeHtml(ep.title)}</div>
-                            <div class="episode-meta">
+                            <div style="font-weight:600;">${escapeHtml(ep.title)}</div>
+                            <div style="font-size:0.85rem;color:var(--text-light);">
                                 ${formatDate(ep.created)} · ${formatDuration(ep.duration)} · ${formatSize(ep.size_mb)}
                             </div>
                         </div>
-                        <div class="episode-actions">
-                            <button class="btn btn-secondary btn-small" onclick="playEpisode('${ep.audio_file}')">
-                                ▶️ 播放
-                            </button>
-                            <a href="${ep.audio_file}" download class="btn btn-secondary btn-small">
-                                ⬇️ 下载
-                            </a>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-primary" style="padding:8px 12px;font-size:0.85rem;" onclick="playEpisode('${ep.audio_file}')">▶️</button>
+                            <a href="${ep.audio_file}" download class="btn btn-primary" style="padding:8px 12px;font-size:0.85rem;text-decoration:none;">⬇️</a>
                         </div>
                     </div>
                 `).join('');
@@ -791,38 +763,22 @@
 
         // Play Episode
         function playEpisode(url) {
-            const audio = document.getElementById('result-audio');
-            audio.src = url;
-            audio.play();
-            
-            // Scroll to player
+            document.getElementById('result-audio').src = url;
             document.getElementById('result-container').classList.add('active');
-            audio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById('result-audio').play();
         }
 
         // Show Toast
-        function showToast(message, type = 'success') {
+        function showToast(message, type) {
             const toast = document.getElementById('toast');
-            const icon = document.getElementById('toast-icon');
-            const msg = document.getElementById('toast-message');
-            
+            toast.textContent = message;
             toast.className = 'toast show ' + type;
-            icon.textContent = type === 'success' ? '✓' : '✗';
-            msg.textContent = message;
-            
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 3000);
+            setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
         // Utilities
         function isValidUrl(string) {
-            try {
-                new URL(string);
-                return true;
-            } catch (_) {
-                return false;
-            }
+            try { new URL(string); return true; } catch { return false; }
         }
 
         function escapeHtml(text) {
@@ -831,14 +787,14 @@
             return div.innerHTML;
         }
 
+        function formatTime(seconds) {
+            if (seconds < 60) return seconds + '秒';
+            if (seconds < 3600) return Math.floor(seconds / 60) + '分' + (seconds % 60) + '秒';
+            return Math.floor(seconds / 3600) + '时' + Math.floor((seconds % 3600) / 60) + '分';
+        }
+
         function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('zh-CN', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+            return new Date(dateString).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         }
 
         function formatDuration(seconds) {
@@ -850,15 +806,13 @@
 
         function formatSize(mb) {
             if (!mb) return '0 MB';
-            if (mb < 1) return `${(mb * 1024).toFixed(0)} KB`;
-            return `${mb.toFixed(1)} MB`;
+            if (mb < 1) return (mb * 1024).toFixed(0) + ' KB';
+            return mb.toFixed(1) + ' MB';
         }
 
         // Enter key to submit
         document.getElementById('url-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                startGeneration();
-            }
+            if (e.key === 'Enter') startGeneration();
         });
     </script>
 </body>
