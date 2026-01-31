@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TypedDict
 
 from .tts_providers import create_tts_provider, TTSProviderFactory
+from .model_health_checker import get_health_checker
 
 
 class TTSResult(TypedDict):  # type: ignore[misc]
@@ -72,7 +73,25 @@ class TTSGenerator:
                 self._config['api_key'] = api_key
     
     def _init_provider(self) -> None:
-        """初始化 TTS Provider"""
+        """初始化 TTS Provider，带健康检查"""
+        from logger import get_logger
+        logger = get_logger("tts_generator")
+        
+        # 健康检查并自动切换
+        health_checker = get_health_checker()
+        final_config, switched, error = health_checker.check_and_switch("tts", self._config)
+        
+        if error:
+            raise TTSError(f"No healthy TTS provider available: {error}")
+        
+        if switched:
+            original = self._config.get('provider')
+            new_provider = final_config.get('provider')
+            logger.warning(
+                f"Switched TTS provider from {original} to {new_provider} due to health check"
+            )
+            self._config = final_config
+        
         provider_name = self._config.get('provider', 'edge-tts')
         
         try:

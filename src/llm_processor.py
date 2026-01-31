@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from .providers import create_provider, ProviderFactory
 from .prompt_manager import PromptManager, get_prompt_manager
+from .model_health_checker import get_health_checker
 
 
 class LLMResult(TypedDict):  # type: ignore[misc]
@@ -80,7 +81,25 @@ class LLMProcessor:
                 self._config['api_key'] = api_key
     
     def _init_provider(self) -> None:
-        """初始化 LLM Provider"""
+        """初始化 LLM Provider，带健康检查"""
+        from logger import get_logger
+        logger = get_logger("llm_processor")
+        
+        # 健康检查并自动切换
+        health_checker = get_health_checker()
+        final_config, switched, error = health_checker.check_and_switch("llm", self._config)
+        
+        if error:
+            raise LLMError(f"No healthy LLM provider available: {error}")
+        
+        if switched:
+            original = self._config.get('provider')
+            new_provider = final_config.get('provider')
+            logger.warning(
+                f"Switched LLM provider from {original} to {new_provider} due to health check"
+            )
+            self._config = final_config
+        
         provider_name = self._config.get('provider', 'openai')
         
         try:
