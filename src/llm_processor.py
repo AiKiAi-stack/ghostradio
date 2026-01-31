@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 
 # 导入 Provider 系统
 from .providers import create_provider, ProviderFactory
+from .prompt_manager import get_prompt_manager
 
 
 class LLMProcessor:
@@ -102,34 +103,13 @@ class LLMProcessor:
         Returns:
             str: 系统提示词内容
         """
-        prompt_file = self.config.get('prompt_file', 'prompts/podcast_host.txt')
+        # 使用 PromptManager 从配置文件加载
+        prompt_manager = get_prompt_manager()
         
-        if os.path.exists(prompt_file):
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                return f.read()
+        # 获取 prompt 类型，默认为 default_host
+        prompt_type = self.config.get('prompt_type', 'default_host')
         
-        # 默认提示词
-        return """你是一位专业的播客主持人，擅长将文章内容转化为生动有趣的播客节目。
-
-风格：轻松自然、富有感染力
-语气：友好、专业但不失亲和力
-语言：中文（除非原文是其他语言）
-
-任务：
-1. 阅读并理解提供的文章内容
-2. 提取核心观点和关键信息
-3. 将内容重新组织为适合音频收听的形式
-4. 添加适当的过渡语和连接词
-5. 在开头简要介绍文章主题
-6. 在结尾提供简短的总结或个人见解
-
-注意事项：
-- 保持段落简短，便于朗读
-- 使用口语化表达，避免过于书面化的长句
-- 适当添加停顿标记（用"..."表示）
-- 总长度控制在 5-10 分钟朗读时间（约 800-1500 字）
-
-请直接输出适合朗读的播客脚本，不需要标注"主持人："等角色前缀。"""
+        return prompt_manager.get_system_prompt(prompt_type)
     
     def _build_user_prompt(self, title: str, content: str) -> str:
         """
@@ -142,18 +122,17 @@ class LLMProcessor:
         Returns:
             str: 用户提示词
         """
-        return f"""请将以下文章转换为播客脚本：
-
-文章标题：{title}
-
-文章内容：
-{content}
-
-请生成适合朗读的播客脚本，要求：
-1. 开头简单介绍这篇文章的主题
-2. 用口语化的方式讲述核心内容
-3. 结尾给出简短总结
-4. 总长度控制在 5-10 分钟朗读时间"""
+        # 使用 PromptManager 从配置文件加载模板
+        prompt_manager = get_prompt_manager()
+        
+        # 获取模板类型，默认为 article_to_podcast
+        template_type = self.config.get('prompt_template', 'article_to_podcast')
+        
+        return prompt_manager.format_user_prompt(
+            template_type,
+            title=title,
+            content=content
+        )
     
     def get_provider_info(self) -> Dict[str, Any]:
         """

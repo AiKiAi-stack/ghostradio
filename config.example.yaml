@@ -37,10 +37,30 @@ resources:
 
 # 3. TTS 配置 (文本转语音)
 tts:
-  provider: "openai"  # 可选项: openai, azure, edge-tts
-  api_key_env: "TTS_API_KEY"  # TTS API Key 环境变量名
-  voice: "alloy"  # 音色
-  speed: 1.0  # 语速
+  # Provider 选择: volcengine, openai, edge-tts
+  # 推荐使用 volcengine (中文效果好，价格适中)
+  provider: "volcengine"
+  
+  # ===== 火山引擎配置 (推荐) =====
+  # 获取 API Key: https://www.volcengine.com/product/speech
+  api_key_env: "VOLCENGINE_TOKEN"  # 从环境变量读取 Token
+  appid_env: "VOLCENGINE_APPID"    # 从环境变量读取 AppID
+  voice: "zh_female_xiaoxiao"      # 音色列表见文档
+  speed: 1.0                       # 语速 (0.5-2.0)
+  volume: 1.0                      # 音量 (0.5-2.0)
+  pitch: 1.0                       # 音调 (0.5-2.0)
+  cluster: "volcano_tts"           # 集群 ID
+  
+  # ===== OpenAI 配置 (备选) =====
+  # provider: "openai"
+  # api_key_env: "OPENAI_API_KEY"
+  # voice: "alloy"  # alloy, echo, fable, onyx, nova, shimmer
+  # speed: 1.0
+  
+  # ===== Edge TTS 配置 (免费) =====
+  # provider: "edge-tts"
+  # voice: "zh-CN-XiaoxiaoNeural"  # 免费，无需 API Key
+  # speed: 1.0
 
 # 4. 播客信息
 podcast:
