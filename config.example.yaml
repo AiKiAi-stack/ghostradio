@@ -1,0 +1,52 @@
+# GhostRadio 配置文件示例
+# 复制此文件为 config.yaml 并填入你的实际配置
+
+# 1. 模型配置 (兼容所有 OpenAI 格式的 API)
+llm:
+  provider: "custom"  # 可选项: openai, deepseek, azure, custom
+  base_url: "https://api.deepseek.com/v1"  # API 基础 URL
+  api_key_env: "LLM_API_KEY"  # 从环境变量读取 API Key
+  model_name: "deepseek-chat"  # 模型名称
+  context_window: 16000  # 最大 Token 数
+  temperature: 0.7  # 温度参数
+  
+  # 系统提示词文件路径
+  prompt_file: "prompts/podcast_host.txt"
+
+# 2. 资源限制
+resources:
+  max_concurrent_tasks: 1  # 最大并发任务数 (永远为1，防止内存爆炸)
+  keep_last_n_episodes: 5  # 保留最近几期节目
+  max_disk_usage_mb: 200  # 最大磁盘使用量 (MB)
+  audio_format: "m4a"  # 音频格式: m4a, ogg, mp3
+  audio_quality: "medium"  # 音频质量: low, medium, high
+
+# 3. TTS 配置 (文本转语音)
+tts:
+  provider: "openai"  # 可选项: openai, azure, edge-tts
+  api_key_env: "TTS_API_KEY"  # TTS API Key 环境变量名
+  voice: "alloy"  # 音色
+  speed: 1.0  # 语速
+
+# 4. 播客信息
+podcast:
+  title: "我的私有频道"
+  description: "由 AI 生成的个人播客"
+  author: "GhostRadio"
+  email: "podcast@example.com"
+  language: "zh-CN"
+  category: "Technology"
+  base_url: "https://你的域名.com/podcast"  # 播客基础 URL
+  cover_image: "cover.jpg"  # 封面图片路径
+
+# 5. 文件路径
+paths:
+  queue_file: "queue.txt"  # 队列文件路径
+  episodes_dir: "episodes"  # 音频文件目录
+  logs_dir: "logs"  # 日志目录
+  rss_file: "episodes/feed.xml"  # RSS 文件路径
+
+# 6. 调度配置
+scheduler:
+  check_interval_minutes: 5  # 检查队列间隔 (分钟)
+  nice_level: 19  # CPU 优先级 (19 为最低)

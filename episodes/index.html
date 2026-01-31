@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostRadio - AI 播客</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .subscribe-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .subscribe-section h2 {
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .rss-link {
+            display: inline-block;
+            background: #ff6600;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        
+        .rss-link:hover {
+            background: #e55a00;
+        }
+        
+        .episodes-list {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .episodes-list h2 {
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        .episode-item {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.3s;
+        }
+        
+        .episode-item:hover {
+            background: #f9f9f9;
+        }
+        
+        .episode-item:last-child {
+            border-bottom: none;
+        }
+        
+        .episode-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .episode-meta {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .episode-meta span {
+            margin-right: 15px;
+        }
+        
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #999;
+        }
+        
+        .empty-state h3 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: #999;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 600px) {
+            header h1 {
+                font-size: 1.8em;
+            }
+            
+            .episode-title {
+                font-size: 1.1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎙️ GhostRadio</h1>
+            <p>AI 生成的个人播客</p>
+        </header>
+        
+        <div class="subscribe-section">
+            <h2>订阅播客</h2>
+            <p>使用 RSS 阅读器或播客应用订阅：</p>
+            <br>
+            <a href="episodes/feed.xml" class="rss-link" target="_blank">📻 RSS Feed</a>
+        </div>
+        
+        <div class="episodes-list">
+            <h2>节目列表</h2>
+            <div id="episodes-container">
+                <div class="empty-state">
+                    <h3>暂无节目</h3>
+                    <p>提交 URL 后，节目将自动显示在这里</p>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Powered by GhostRadio - 极致省资源的 AI 播客生成器</p>
+        </footer>
+    </div>
+    
+    <script>
+        // 动态加载节目列表
+        async function loadEpisodes() {
+            try {
+                const response = await fetch('episodes/episodes.json');
+                if (!response.ok) {
+                    throw new Error('Failed to load episodes');
+                }
+                
+                const episodes = await response.json();
+                const container = document.getElementById('episodes-container');
+                
+                if (episodes.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>暂无节目</h3>
+                            <p>提交 URL 后，节目将自动显示在这里</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = episodes.map(episode => `
+                    <div class="episode-item">
+                        <div class="episode-title">${escapeHtml(episode.title)}</div>
+                        <div class="episode-meta">
+                            <span>📅 ${formatDate(episode.created)}</span>
+                            <span>⏱️ ${formatDuration(episode.duration)}</span>
+                            <span>💾 ${formatSize(episode.size_mb)}</span>
+                        </div>
+                        <audio controls preload="none">
+                            <source src="episodes/${episode.audio_file}" type="${episode.mime_type || 'audio/mpeg'}">
+                            您的浏览器不支持音频播放。
+                        </audio>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('Error loading episodes:', error);
+            }
+        }
+        
+        // HTML 转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 格式化日期
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+        
+        // 格式化时长
+        function formatDuration(seconds) {
+            if (!seconds) return '未知';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // 格式化文件大小
+        function formatSize(mb) {
+            if (!mb) return '未知';
+            if (mb < 1) {
+                return `${(mb * 1024).toFixed(1)} KB`;
+            }
+            return `${mb.toFixed(1)} MB`;
+        }
+        
+        // 页面加载完成后加载节目
+        document.addEventListener('DOMContentLoaded', loadEpisodes);
+    </script>
+</body>
+</html>
