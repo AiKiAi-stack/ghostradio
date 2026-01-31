@@ -412,6 +412,18 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
         if not url:
             return 400, {'error': 'URL is required'}, 'application/json'
         
+        # 记录完整的请求信息
+        logger.info(
+            "API generate request received",
+            context={
+                "url": url,
+                "llm_model": llm_model,
+                "tts_model": tts_model,
+                "url_length": len(url),
+                "request_data": data
+            }
+        )
+        
         # 创建任务
         job = job_manager.create_job(url, llm_model, tts_model)
         

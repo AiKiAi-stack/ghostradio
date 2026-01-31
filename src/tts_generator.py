@@ -85,6 +85,17 @@ class TTSGenerator:
         """
         max_retries = 3
         last_error = None
+        current_provider = self.provider_info['name']
+        
+        logger.info(
+            f"Starting TTS generation",
+            context={
+                "provider": current_provider,
+                "voice": self.provider_info.get('voice'),
+                "text_length": len(text),
+                "output_path": output_path
+            }
+        )
         
         for attempt in range(max_retries):
             try:
@@ -96,7 +107,25 @@ class TTSGenerator:
                 # 使用 Provider 合成语音
                 result = self._provider.synthesize(text, output_path)
                 
+                logger.debug(
+                    f"TTS synthesis result",
+                    context={
+                        "provider": current_provider,
+                        "success": result.get('success'),
+                        "attempt": attempt + 1
+                    }
+                )
+                
                 if result['success']:
+                    logger.info(
+                        f"TTS generation successful",
+                        context={
+                            "provider": current_provider,
+                            "file_path": result.get('file_path'),
+                            "duration": result.get('duration'),
+                            "attempt": attempt + 1
+                        }
+                    )
                     return TTSResult(
                         success=True,
                         file_path=result.get('file_path', ''),
@@ -106,12 +135,23 @@ class TTSGenerator:
                 else:
                     # API 返回错误，可能是 Provider 问题
                     error_msg = result.get('error', 'Unknown error')
-                    logger.warning(f"TTS API error: {error_msg}")
+                    logger.warning(
+                        f"TTS API error",
+                        context={
+                            "provider": current_provider,
+                            "attempt": attempt + 1,
+                            "error": error_msg,
+                            "raw_response": result
+                        }
+                    )
                     
                     # 尝试切换 Provider
                     if self._try_switch_provider():
+                        current_provider = self.provider_info['name']
+                        logger.info(f"Switched to new TTS provider: {current_provider}")
                         continue  # 用新 Provider 重试
                     else:
+                        logger.error(f"Failed to switch TTS provider, giving up")
                         return TTSResult(
                             success=False,
                             file_path="",
@@ -121,15 +161,34 @@ class TTSGenerator:
                 
             except Exception as e:
                 last_error = e
-                logger.error(f"TTS generation error (attempt {attempt + 1}): {e}")
+                logger.error(
+                    f"TTS generation exception",
+                    context={
+                        "provider": current_provider,
+                        "attempt": attempt + 1,
+                        "error": str(e)
+                    },
+                    error=e
+                )
                 
                 # 尝试切换 Provider
                 if self._try_switch_provider():
+                    current_provider = self.provider_info['name']
+                    logger.info(f"Switched to new TTS provider after exception: {current_provider}")
                     continue  # 用新 Provider 重试
                 else:
+                    logger.error(f"No more TTS providers available")
                     break  # 没有可用 Provider 了
         
         # 所有尝试都失败
+        logger.error(
+            f"TTS generation failed after all retries",
+            context={
+                "attempts": max_retries,
+                "final_provider": current_provider,
+                "last_error": str(last_error)
+            }
+        )
         return TTSResult(
             success=False,
             file_path="",

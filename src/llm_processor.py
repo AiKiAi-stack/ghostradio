@@ -93,6 +93,17 @@ class LLMProcessor:
         """
         max_retries = 3
         last_error = None
+        current_model = self.provider_info.model
+        
+        logger.info(
+            f"Starting LLM processing",
+            context={
+                "title": title,
+                "content_length": len(content),
+                "model": current_model,
+                "provider": self.provider_info.name
+            }
+        )
         
         for attempt in range(max_retries):
             try:
@@ -100,11 +111,39 @@ class LLMProcessor:
                 system_prompt = self._load_system_prompt()
                 user_prompt = self._build_user_prompt(title, content)
                 
+                logger.debug(
+                    f"LLM prompt prepared",
+                    context={
+                        "model": current_model,
+                        "system_prompt_preview": system_prompt[:100] + "...",
+                        "user_prompt_preview": user_prompt[:200] + "...",
+                        "user_prompt_length": len(user_prompt)
+                    }
+                )
+                
                 # 调用 LLM
                 messages = self._provider.format_messages(system_prompt, user_prompt)
                 result = self._provider.chat_completion(messages)
                 
+                logger.debug(
+                    f"LLM response received",
+                    context={
+                        "model": current_model,
+                        "success": result.get('success'),
+                        "tokens_used": result.get('tokens_used', 0),
+                        "content_preview": result.get('content', '')[:200] + "..."
+                    }
+                )
+                
                 if result['success']:
+                    logger.info(
+                        f"LLM processing successful",
+                        context={
+                            "model": current_model,
+                            "tokens_used": result.get('tokens_used', 0),
+                            "script_length": len(result.get('content', ''))
+                        }
+                    )
                     return LLMResult(
                         success=True,
                         script=result['content'],
@@ -114,12 +153,23 @@ class LLMProcessor:
                 else:
                     # API 返回错误，可能是模型问题
                     error_msg = result.get('error', 'Unknown error')
-                    logger.warning(f"LLM API error: {error_msg}")
+                    logger.warning(
+                        f"LLM API error",
+                        context={
+                            "model": current_model,
+                            "attempt": attempt + 1,
+                            "error": error_msg,
+                            "raw_response": result
+                        }
+                    )
                     
                     # 尝试切换模型
                     if self._try_switch_model():
+                        current_model = self.provider_info.model
+                        logger.info(f"Switched to new model: {current_model}")
                         continue  # 用新模型重试
                     else:
+                        logger.error(f"Failed to switch model, giving up")
                         return LLMResult(
                             success=False,
                             script="",
@@ -129,15 +179,34 @@ class LLMProcessor:
                 
             except Exception as e:
                 last_error = e
-                logger.error(f"LLM processing error (attempt {attempt + 1}): {e}")
+                logger.error(
+                    f"LLM processing exception",
+                    context={
+                        "model": current_model,
+                        "attempt": attempt + 1,
+                        "error": str(e)
+                    },
+                    error=e
+                )
                 
                 # 尝试切换模型
                 if self._try_switch_model():
+                    current_model = self.provider_info.model
+                    logger.info(f"Switched to new model after exception: {current_model}")
                     continue  # 用新模型重试
                 else:
+                    logger.error(f"No more models available")
                     break  # 没有可用模型了
         
         # 所有尝试都失败
+        logger.error(
+            f"LLM processing failed after all retries",
+            context={
+                "attempts": max_retries,
+                "final_model": current_model,
+                "last_error": str(last_error)
+            }
+        )
         return LLMResult(
             success=False,
             script="",

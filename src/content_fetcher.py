@@ -7,6 +7,9 @@ import re
 import requests
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
+from .logger import get_logger
+
+logger = get_logger("content_fetcher")
 
 
 class ContentFetcher:
@@ -32,8 +35,11 @@ class ContentFetcher:
                 'error': str (if failed)
             }
         """
+        logger.info(f"Fetching URL: {url}")
+        
         try:
             if not self._is_valid_url(url):
+                logger.error(f"Invalid URL format: {url}")
                 return {
                     'success': False,
                     'error': 'Invalid URL format',
@@ -50,11 +56,23 @@ class ContentFetcher:
             content: Optional[str] = self._extract_content(html)
 
             if not content:
+                logger.warning(f"No content extracted from {url}")
                 return {
                     'success': False,
                     'error': 'Could not extract content from page',
                     'url': url
                 }
+
+            content_length = len(content)
+            logger.info(
+                f"Successfully fetched content",
+                context={
+                    "url": url,
+                    "title": title,
+                    "content_length": content_length,
+                    "title_length": len(title)
+                }
+            )
 
             return {
                 'success': True,
@@ -64,12 +82,14 @@ class ContentFetcher:
             }
 
         except requests.RequestException as e:
+            logger.error(f"Network error fetching {url}: {str(e)}")
             return {
                 'success': False,
                 'error': f'Network error: {str(e)}',
                 'url': url
             }
         except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {str(e)}")
             return {
                 'success': False,
                 'error': f'Error: {str(e)}',
