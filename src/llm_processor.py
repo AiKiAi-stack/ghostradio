@@ -1,34 +1,52 @@
 """
 LLM 内容处理模块
-支持多种 LLM API (OpenAI 格式兼容)
+使用 Provider 架构支持多种 LLM API
 """
 
 import os
 from typing import Dict, Any, Optional
-from openai import OpenAI
+
+# 导入 Provider 系统
+from .providers import create_provider, ProviderFactory
 
 
 class LLMProcessor:
-    """LLM 处理器 - 将文章内容转换为播客脚本"""
+    """
+    LLM 处理器 - 将文章内容转换为播客脚本
+    
+    支持多种 Provider：
+    - nvidia: NVIDIA API
+    - openai: OpenAI 及兼容 API（DeepSeek、Azure 等）
+    """
     
     def __init__(self, config: Dict[str, Any]):
+        """
+        初始化 LLM 处理器
+        
+        Args:
+            config: 配置字典，包含：
+                - provider: Provider 名称（nvidia/openai）
+                - api_key: API 密钥
+                - model: 模型名称
+                - temperature: 温度参数
+                - max_tokens: 最大 token 数
+                - prompt_file: 系统提示词文件路径
+        """
         self.config = config
-        self.client = None
-        self._init_client()
-    
-    def _init_client(self):
-        """初始化 OpenAI 客户端"""
-        api_key = self.config.get('api_key')
-        base_url = self.config.get('base_url')
         
-        if not api_key:
-            raise ValueError(f"API Key not found in environment variable: {self.config.get('api_key_env', 'LLM_API_KEY')}")
+        # 从环境变量获取 API key（如果配置了）
+        api_key_env = config.get('api_key_env')
+        if api_key_env and not config.get('api_key'):
+            config['api_key'] = os.environ.get(api_key_env)
         
-        client_kwargs = {'api_key': api_key}
-        if base_url:
-            client_kwargs['base_url'] = base_url
-        
-        self.client = OpenAI(**client_kwargs)
+        # 创建 Provider
+        try:
+            self.provider = create_provider(config)
+        except ValueError as e:
+            # 如果指定的 provider 不存在，回退到 openai
+            print(f"Warning: {e}, falling back to 'openai' provider")
+            config['provider'] = 'openai'
+            self.provider = create_provider(config)
     
     def process(self, title: str, content: str) -> dict:
         """
@@ -42,6 +60,7 @@ class LLMProcessor:
             dict: {
                 'success': bool,
                 'script': str,
+                'tokens_used': int,
                 'error': str (if failed)
             }
         """
@@ -52,24 +71,23 @@ class LLMProcessor:
             # 构建用户提示
             user_prompt = self._build_user_prompt(title, content)
             
+            # 格式化消息
+            messages = self.provider.format_messages(system_prompt, user_prompt)
+            
             # 调用 LLM
-            response = self.client.chat.completions.create(
-                model=self.config.get('model_name', 'gpt-3.5-turbo'),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=self.config.get('temperature', 0.7),
-                max_tokens=self.config.get('context_window', 16000)
-            )
+            result = self.provider.chat_completion(messages)
             
-            script = response.choices[0].message.content
-            
-            return {
-                'success': True,
-                'script': script,
-                'tokens_used': response.usage.total_tokens if response.usage else 0
-            }
+            if result['success']:
+                return {
+                    'success': True,
+                    'script': result['content'],
+                    'tokens_used': result.get('tokens_used', 0)
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': result.get('error', 'Unknown error')
+                }
             
         except Exception as e:
             return {
@@ -78,7 +96,12 @@ class LLMProcessor:
             }
     
     def _load_system_prompt(self) -> str:
-        """加载系统提示词"""
+        """
+        加载系统提示词
+        
+        Returns:
+            str: 系统提示词内容
+        """
         prompt_file = self.config.get('prompt_file', 'prompts/podcast_host.txt')
         
         if os.path.exists(prompt_file):
@@ -109,7 +132,16 @@ class LLMProcessor:
 请直接输出适合朗读的播客脚本，不需要标注"主持人："等角色前缀。"""
     
     def _build_user_prompt(self, title: str, content: str) -> str:
-        """构建用户提示"""
+        """
+        构建用户提示
+        
+        Args:
+            title: 文章标题
+            content: 文章内容
+            
+        Returns:
+            str: 用户提示词
+        """
         return f"""请将以下文章转换为播客脚本：
 
 文章标题：{title}
@@ -122,3 +154,27 @@ class LLMProcessor:
 2. 用口语化的方式讲述核心内容
 3. 结尾给出简短总结
 4. 总长度控制在 5-10 分钟朗读时间"""
+    
+    def get_provider_info(self) -> Dict[str, Any]:
+        """
+        获取当前 Provider 信息
+        
+        Returns:
+            dict: Provider 信息
+        """
+        return {
+            'name': self.provider.get_provider_name(),
+            'model': self.provider.model,
+            'available_models': self.provider.get_model_list()
+        }
+
+
+# 向后兼容的便捷函数
+def get_available_providers() -> list:
+    """
+    获取所有可用的 Provider 列表
+    
+    Returns:
+        list: Provider 名称列表
+    """
+    return ProviderFactory.get_available_providers()

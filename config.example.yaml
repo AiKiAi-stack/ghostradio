@@ -1,14 +1,28 @@
 # GhostRadio 配置文件示例
 # 复制此文件为 config.yaml 并填入你的实际配置
 
-# 1. 模型配置 (兼容所有 OpenAI 格式的 API)
+# 1. 模型配置 (支持多种 Provider)
 llm:
-  provider: "custom"  # 可选项: openai, deepseek, azure, custom
-  base_url: "https://api.deepseek.com/v1"  # API 基础 URL
-  api_key_env: "LLM_API_KEY"  # 从环境变量读取 API Key
-  model_name: "deepseek-chat"  # 模型名称
+  # Provider 选择: nvidia, openai, deepseek, azure, custom
+  # 推荐使用 nvidia (免费额度高，模型丰富)
+  provider: "nvidia"
+  
+  # ===== NVIDIA 配置 (推荐) =====
+  # 获取 API Key: https://build.nvidia.com/
+  api_key_env: "NVIDIA_API_KEY"  # 从环境变量读取
+  model_name: "deepseek-ai/deepseek-v3.2"  # 或其他模型如 meta/llama-3.1-405b-instruct
+  base_url: "https://integrate.api.nvidia.com/v1"  # NVIDIA API 端点
+  
+  # ===== OpenAI/DeepSeek 配置 (备选) =====
+  # provider: "openai"
+  # api_key_env: "OPENAI_API_KEY"  # 或 DEEPSEEK_API_KEY
+  # model_name: "gpt-4o"  # 或 deepseek-chat
+  # base_url: "https://api.openai.com/v1"  # 或 https://api.deepseek.com/v1
+  
+  # 通用参数
   context_window: 16000  # 最大 Token 数
-  temperature: 0.7  # 温度参数
+  temperature: 0.7  # 温度参数 (0.0-1.0)
+  max_tokens: 4096  # 最大生成 token 数
   
   # 系统提示词文件路径
   prompt_file: "prompts/podcast_host.txt"
