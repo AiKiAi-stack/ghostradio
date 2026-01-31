@@ -26,18 +26,23 @@ class Config:
         with open(self.config_path, 'r', encoding='utf-8') as f:
             self._config = yaml.safe_load(f)
     
-    def get(self, key: str, default: Any = None) -> Any:
-        """获取配置项，支持点号分隔的路径"""
+    def get(self, key: str, default: Any = None, value_type: type = str) -> Any:
+        """获取配置项，支持点号分隔的路径和类型转换"""
         keys = key.split('.')
         value = self._config
-        
+
         for k in keys:
             if isinstance(value, dict) and k in value:
                 value = value[k]
             else:
                 return default
-        
-        return value
+
+        try:
+            if value_type != str and value is not None:
+                return value_type(value)
+            return value
+        except (TypeError, ValueError):
+            return default
     
     def get_env_value(self, env_var: str) -> Optional[str]:
         """从环境变量获取值"""

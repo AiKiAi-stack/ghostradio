@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 from .base_tts_provider import TTSProvider
 
 
-class VolcengineProvider(TTSProvider):
+class VolcengineTTSProvider(TTSProvider):
     """
     火山引擎（豆包语音）TTS Provider
     

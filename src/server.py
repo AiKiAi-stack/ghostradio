@@ -7,25 +7,96 @@ GhostRadio Trigger Server - 极简 Webhook 接收器
 import os
 import sys
 import json
-import urllib.parse
+import argparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
+from typing import Dict, Any, Optional
 
-# 配置
-QUEUE_FILE = "queue.txt"
-HOST = "0.0.0.0"
-PORT = 8080
+from src.config import get_config
+
+
+def get_server_config() -> Dict[str, Any]:
+    """从配置文件获取服务器配置"""
+    try:
+        config = get_config()
+        paths = config.get_paths_config()
+        return {
+            'queue_file': paths.get('queue_file', 'queue.txt'),
+            'host': config.get('server.host', '0.0.0.0'),
+            'port': config.get('server.port', 8080, int)
+        }
+    except Exception:
+        return {
+            'queue_file': 'queue.txt',
+            'host': '0.0.0.0',
+            'port': 8080
+        }
 
 
 class WebhookHandler(BaseHTTPRequestHandler):
     """处理 Webhook 请求的处理器"""
-    
-    def log_message(self, format, *args):
+
+    config: Dict[str, Any] = {}
+
+    def log_message(self, format: str, *args) -> None:
         """自定义日志格式"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {format % args}")
-    
-    def do_GET(self):
+
+    def _send_json(self, status_code: int, data: Dict[str, Any]) -> None:
+        """发送 JSON 响应"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+
+    def _send_html(self, status_code: int, html: str) -> None:
+        """发送 HTML 响应"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(html.encode('utf-8'))
+
+    def _get_index_page(self) -> str:
+        """返回简单的首页 HTML"""
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>GhostRadio Trigger</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }}
+        h1 {{ color: #333; }}
+        .endpoint {{ background: #f5f5f5; padding: 10px; border-radius: 5px; font-family: monospace; }}
+        .example {{ background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 10px 0; }}
+        code {{ background: #f0f0f0; padding: 2px 5px; border-radius: 3px; }}
+    </style>
+</head>
+<body>
+    <h1>GhostRadio Trigger Server</h1>
+    <p>极简 Webhook 接收器 - 平时"装死"，只在有任务时"诈尸"</p>
+
+    <h2>API 端点</h2>
+    <div class="endpoint">
+        POST /webhook - 提交 URL 到处理队列
+    </div>
+
+    <h3>请求示例</h3>
+    <div class="example">
+        <code>curl -X POST http://localhost:{self.config.get('port', 8080)}/webhook \\<br>
+        -H "Content-Type: application/json" \\<br>
+        -d '{{"url": "https://example.com/article"}}'</code>
+    </div>
+
+    <h2>健康检查</h2>
+    <div class="endpoint">
+        GET /health - 服务状态检查
+    </div>
+
+    <p><small>GhostRadio - 极致省资源的播客生成器</small></p>
+</body>
+</html>"""
+
+    def do_GET(self) -> None:
         """处理 GET 请求 - 健康检查和简单页面"""
         if self.path == "/health":
             self._send_json(200, {"status": "ok", "service": "ghostradio-trigger"})
@@ -33,122 +104,82 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self._send_html(200, self._get_index_page())
         else:
             self._send_json(404, {"error": "Not found"})
-    
-    def do_POST(self):
+
+    def do_POST(self) -> None:
         """处理 POST 请求 - 接收 URL"""
         if self.path == "/webhook":
             self._handle_webhook()
         else:
             self._send_json(404, {"error": "Not found"})
-    
-    def _handle_webhook(self):
+
+    def _handle_webhook(self) -> Optional[Dict[str, Any]]:
         """处理 Webhook - 接收 URL 并写入队列"""
         try:
-            # 读取请求体
-            content_length = int(self.headers.get('Content-Length', 0))
+            content_length: int = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
                 self._send_json(400, {"error": "Empty request body"})
-                return
-            
-            post_data = self.rfile.read(content_length).decode('utf-8')
-            
-            # 解析 JSON
+                return None
+
+            post_data: str = self.rfile.read(content_length).decode('utf-8')
+
             try:
-                data = json.loads(post_data)
+                data: Dict[str, Any] = json.loads(post_data)
             except json.JSONDecodeError:
-                # 尝试作为纯文本 URL 处理
                 data = {"url": post_data.strip()}
-            
-            url = data.get('url', '').strip()
-            
+
+            url: str = data.get('url', '').strip()
+
             if not url:
                 self._send_json(400, {"error": "Missing 'url' parameter"})
-                return
-            
-            # 验证 URL 格式
+                return None
+
             if not url.startswith(('http://', 'https://')):
                 self._send_json(400, {"error": "Invalid URL format"})
-                return
-            
-            # 写入队列文件
-            timestamp = datetime.now().isoformat()
-            queue_entry = f"{timestamp}|{url}\n"
-            
-            with open(QUEUE_FILE, 'a', encoding='utf-8') as f:
+                return None
+
+            timestamp: str = datetime.now().isoformat()
+            queue_entry: str = f"{timestamp}|{url}\n"
+
+            queue_file: str = self.config.get('queue_file', 'queue.txt')
+            with open(queue_file, 'a', encoding='utf-8') as f:
                 f.write(queue_entry)
-            
+
             self.log_message("Added to queue: %s", url[:60])
             self._send_json(200, {
                 "success": True,
                 "message": "URL added to queue",
                 "url": url[:100] + "..." if len(url) > 100 else url
             })
-            
+            return {"success": True, "url": url}
+
+        except json.JSONDecodeError as e:
+            self.log_message("JSON decode error: %s", str(e))
+            self._send_json(400, {"error": f"Invalid JSON: {str(e)}"})
+            return None
+        except IOError as e:
+            self.log_message("IO error: %s", str(e))
+            self._send_json(500, {"error": f"Failed to write queue: {str(e)}"})
+            return None
         except Exception as e:
-            self.log_message("Error: %s", str(e))
+            self.log_message("Unexpected error: %s", str(e))
             self._send_json(500, {"error": str(e)})
-    
-    def _send_json(self, status_code, data):
-        """发送 JSON 响应"""
-        self.send_response(status_code)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
-    
-    def _send_html(self, status_code, html):
-        """发送 HTML 响应"""
-        self.send_response(status_code)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.end_headers()
-        self.wfile.write(html.encode('utf-8'))
-    
-    def _get_index_page(self):
-        """返回简单的首页 HTML"""
-        return """<!DOCTYPE html>
-<html>
-<head>
-    <title>GhostRadio Trigger</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-        h1 { color: #333; }
-        .endpoint { background: #f5f5f5; padding: 10px; border-radius: 5px; font-family: monospace; }
-        .example { background: #e8f4f8; padding: 15px; border-radius: 5px; margin: 10px 0; }
-        code { background: #f0f0f0; padding: 2px 5px; border-radius: 3px; }
-    </style>
-</head>
-<body>
-    <h1>GhostRadio Trigger Server</h1>
-    <p>极简 Webhook 接收器 - 平时"装死"，只在有任务时"诈尸"</p>
-    
-    <h2>API 端点</h2>
-    <div class="endpoint">
-        POST /webhook - 提交 URL 到处理队列
-    </div>
-    
-    <h3>请求示例</h3>
-    <div class="example">
-        <code>curl -X POST http://localhost:8080/webhook \\<br>
-        -H "Content-Type: application/json" \\<br>
-        -d '{"url": "https://example.com/article"}'</code>
-    </div>
-    
-    <h2>健康检查</h2>
-    <div class="endpoint">
-        GET /health - 服务状态检查
-    </div>
-    
-    <p><small>GhostRadio - 极致省资源的播客生成器</small></p>
-</body>
-</html>"""
+            return None
 
 
-def run_server():
+def run_server() -> None:
     """启动服务器"""
-    server = HTTPServer((HOST, PORT), WebhookHandler)
-    print(f"GhostRadio Trigger Server started at http://{HOST}:{PORT}")
-    print(f"Queue file: {QUEUE_FILE}")
+    config = get_server_config()
+    host: str = config['host']
+    port: int = config['port']
+    queue_file: str = config['queue_file']
+
+    WebhookHandler.config = config
+
+    server = HTTPServer((host, port), WebhookHandler)
+    print(f"GhostRadio Trigger Server started at http://{host}:{port}")
+    print(f"Queue file: {queue_file}")
     print("Press Ctrl+C to stop")
-    
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -157,4 +188,11 @@ def run_server():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='GhostRadio Trigger Server')
+    parser.add_argument('--config', '-c', default='config.yaml', help='Config file path')
+    args = parser.parse_args()
+
+    from src.config import reload_config
+    reload_config(args.config)
+
     run_server()

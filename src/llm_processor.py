@@ -1,55 +1,96 @@
 """
 LLM 内容处理模块
 使用 Provider 架构支持多种 LLM API
+
+设计原则：
+- 依赖注入：通过构造函数注入配置和 Provider
+- 不可变配置：初始化后不修改配置
+- 清晰的错误分类
 """
 
 import os
-from typing import Dict, Any, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-# 导入 Provider 系统
 from .providers import create_provider, ProviderFactory
-from .prompt_manager import get_prompt_manager
+from .prompt_manager import PromptManager, get_prompt_manager
+
+
+class LLMResult(TypedDict):  # type: ignore[misc]
+    """LLM 处理结果类型"""
+    success: bool
+    script: str
+    tokens_used: int
+    error: str
+
+
+@dataclass
+class ProviderInfo:
+    """Provider 信息"""
+    name: str
+    model: str
+    available_models: List[str]
+
+
+class LLMError(Exception):
+    """LLM 处理错误"""
+    pass
 
 
 class LLMProcessor:
     """
-    LLM 处理器 - 将文章内容转换为播客脚本
+    LLM 处理器
     
-    支持多种 Provider：
-    - nvidia: NVIDIA API
-    - openai: OpenAI 及兼容 API（DeepSeek、Azure 等）
+    职责：
+    - 管理 LLM Provider 生命周期
+    - 处理文章内容生成播客脚本
+    - 格式化 Prompt
     """
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        prompt_manager: Optional[PromptManager] = None
+    ) -> None:
         """
         初始化 LLM 处理器
         
         Args:
-            config: 配置字典，包含：
-                - provider: Provider 名称（nvidia/openai）
-                - api_key: API 密钥
-                - model: 模型名称
-                - temperature: 温度参数
-                - max_tokens: 最大 token 数
-                - prompt_file: 系统提示词文件路径
+            config: 配置字典
+            prompt_manager: Prompt 管理器实例
+            
+        Raises:
+            ValueError: 配置无效
         """
-        self.config = config
+        self._config: Dict[str, Any] = config.copy()
+        self._prompt_manager = prompt_manager
         
-        # 从环境变量获取 API key（如果配置了）
-        api_key_env = config.get('api_key_env')
-        if api_key_env and not config.get('api_key'):
-            config['api_key'] = os.environ.get(api_key_env)
+        # 解析 API Key
+        self._resolve_api_key()
         
-        # 创建 Provider
-        try:
-            self.provider = create_provider(config)
-        except ValueError as e:
-            # 如果指定的 provider 不存在，回退到 openai
-            print(f"Warning: {e}, falling back to 'openai' provider")
-            config['provider'] = 'openai'
-            self.provider = create_provider(config)
+        # 初始化 Provider
+        self._init_provider()
     
-    def process(self, title: str, content: str) -> dict:
+    def _resolve_api_key(self) -> None:
+        """从环境变量解析 API Key"""
+        api_key_env = self._config.get('api_key_env')
+        if api_key_env and not self._config.get('api_key'):
+            api_key = os.environ.get(api_key_env)
+            if api_key:
+                self._config['api_key'] = api_key
+    
+    def _init_provider(self) -> None:
+        """初始化 LLM Provider"""
+        provider_name = self._config.get('provider', 'openai')
+        
+        try:
+            self._provider = create_provider(self._config)
+        except ValueError as e:
+            raise LLMError(
+                f"Failed to initialize LLM provider '{provider_name}': {e}"
+            ) from e
+    
+    def process(self, title: str, content: str) -> LLMResult:
         """
         处理文章内容，生成播客脚本
         
@@ -58,102 +99,77 @@ class LLMProcessor:
             content: 文章内容
             
         Returns:
-            dict: {
-                'success': bool,
-                'script': str,
-                'tokens_used': int,
-                'error': str (if failed)
-            }
+            LLMResult: 处理结果
         """
         try:
-            # 加载系统提示词
+            # 加载 Prompt
             system_prompt = self._load_system_prompt()
-            
-            # 构建用户提示
             user_prompt = self._build_user_prompt(title, content)
             
-            # 格式化消息
-            messages = self.provider.format_messages(system_prompt, user_prompt)
-            
             # 调用 LLM
-            result = self.provider.chat_completion(messages)
+            messages = self._provider.format_messages(system_prompt, user_prompt)
+            result = self._provider.chat_completion(messages)
             
             if result['success']:
-                return {
-                    'success': True,
-                    'script': result['content'],
-                    'tokens_used': result.get('tokens_used', 0)
-                }
+                return LLMResult(
+                    success=True,
+                    script=result['content'],
+                    tokens_used=result.get('tokens_used', 0),
+                    error=""
+                )
             else:
-                return {
-                    'success': False,
-                    'error': result.get('error', 'Unknown error')
-                }
-            
+                error_msg = result.get('error', 'Unknown error')
+                return LLMResult(
+                    success=False,
+                    script="",
+                    tokens_used=0,
+                    error=error_msg
+                )
+                
         except Exception as e:
-            return {
-                'success': False,
-                'error': f'LLM processing error: {str(e)}'
-            }
+            return LLMResult(
+                success=False,
+                script="",
+                tokens_used=0,
+                error=f"LLM processing error: {str(e)}"
+            )
     
     def _load_system_prompt(self) -> str:
-        """
-        加载系统提示词
-        
-        Returns:
-            str: 系统提示词内容
-        """
-        # 使用 PromptManager 从配置文件加载
-        prompt_manager = get_prompt_manager()
-        
-        # 获取 prompt 类型，默认为 default_host
-        prompt_type = self.config.get('prompt_type', 'default_host')
-        
-        return prompt_manager.get_system_prompt(prompt_type)
+        """加载系统提示词"""
+        manager = self._prompt_manager or get_prompt_manager()
+        prompt_type = self._config.get('prompt_type', 'default_host')
+        return manager.get_system_prompt(prompt_type)
     
     def _build_user_prompt(self, title: str, content: str) -> str:
-        """
-        构建用户提示
-        
-        Args:
-            title: 文章标题
-            content: 文章内容
-            
-        Returns:
-            str: 用户提示词
-        """
-        # 使用 PromptManager 从配置文件加载模板
-        prompt_manager = get_prompt_manager()
-        
-        # 获取模板类型，默认为 article_to_podcast
-        template_type = self.config.get('prompt_template', 'article_to_podcast')
-        
-        return prompt_manager.format_user_prompt(
+        """构建用户提示"""
+        manager = self._prompt_manager or get_prompt_manager()
+        template_type = self._config.get('prompt_template', 'article_to_podcast')
+        return manager.format_user_prompt(
             template_type,
             title=title,
             content=content
         )
     
-    def get_provider_info(self) -> Dict[str, Any]:
-        """
-        获取当前 Provider 信息
-        
-        Returns:
-            dict: Provider 信息
-        """
-        return {
-            'name': self.provider.get_provider_name(),
-            'model': self.provider.model,
-            'available_models': self.provider.get_model_list()
-        }
+    @property
+    def provider_info(self) -> ProviderInfo:
+        """获取当前 Provider 信息"""
+        return ProviderInfo(
+            name=self._provider.get_provider_name(),
+            model=self._provider.model or "",
+            available_models=self._provider.get_model_list()
+        )
+    
+    @property
+    def config(self) -> Dict[str, Any]:
+        """获取配置副本（只读）"""
+        return self._config.copy()
 
 
-# 向后兼容的便捷函数
-def get_available_providers() -> list:
+def get_available_providers() -> List[str]:
     """
-    获取所有可用的 Provider 列表
+    获取所有可用的 LLM Provider 列表
     
     Returns:
-        list: Provider 名称列表
+        Provider 名称列表
     """
     return ProviderFactory.get_available_providers()

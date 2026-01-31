@@ -75,31 +75,31 @@ class FileLock:
     
     def _acquire_unix(self) -> bool:
         """Unix/Linux/macOS 平台获取锁"""
-        import fcntl
-        
+        import fcntl  # type: ignore
+
         try:
             self.fd = open(self.lock_file, 'w')
-            fcntl.flock(self.fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            
+            fcntl.flock(self.fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore
+
             # 写入 PID
             self.fd.write(str(os.getpid()))
             self.fd.flush()
-            
+
             return True
         except (IOError, OSError):
             if self.fd:
                 self.fd.close()
                 self.fd = None
             return False
-    
-    def _release_unix(self):
+
+    def _release_unix(self) -> None:
         """Unix/Linux/macOS 平台释放锁"""
-        import fcntl
-        
+        import fcntl  # type: ignore
+
         if self.fd:
             try:
-                fcntl.flock(self.fd.fileno(), fcntl.LOCK_UN)
-            except:
+                fcntl.flock(self.fd.fileno(), fcntl.LOCK_UN)  # type: ignore
+            except Exception:
                 pass
             self.fd.close()
             self.fd = None

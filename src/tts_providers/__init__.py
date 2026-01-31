@@ -44,8 +44,8 @@ class TTSProviderFactory:
             return
         
         try:
-            from .volcengine_provider import VolcengineProvider
-            cls.register('volcengine', VolcengineProvider)
+            from .volcengine_provider import VolcengineTTSProvider
+            cls.register('volcengine', VolcengineTTSProvider)
         except ImportError as e:
             print(f"Warning: Failed to register Volcengine provider: {e}")
         

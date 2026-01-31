@@ -84,3 +84,8 @@ paths:
 scheduler:
   check_interval_minutes: 5  # 检查队列间隔 (分钟)
   nice_level: 19  # CPU 优先级 (19 为最低)
+
+# 7. 服务器配置 (触发器)
+server:
+  host: "0.0.0.0"  # 监听地址
+  port: 8080  # 监听端口

@@ -27,56 +27,51 @@ class OpenAITTSProvider(TTSProvider):
         return True
     
     def synthesize(self, text: str, output_path: str, **kwargs) -> Dict[str, Any]:
+        temp_files: List[str] = []
         try:
             from openai import OpenAI
-            
+
             client = OpenAI(api_key=self.api_key)
-            
+
             voice = kwargs.get('voice', self.voice)
             speed = kwargs.get('speed', self.speed)
-            
-            # 分段处理长文本
+
             max_chunk_size = 4000
             chunks = self.split_text(text, max_chunk_size)
-            
-            temp_files = []
-            
+
             for i, chunk in enumerate(chunks):
                 temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
                 temp_files.append(temp_file.name)
-                
+
                 response = client.audio.speech.create(
                     model="tts-1",
                     voice=voice,
                     input=chunk,
                     speed=speed
                 )
-                
+
                 response.stream_to_file(temp_file.name)
                 temp_file.close()
-            
-            # 合并音频
+
             if len(temp_files) == 1:
                 os.rename(temp_files[0], output_path)
             else:
                 self._merge_audio_files(temp_files, output_path)
-            
-            # 估算时长
+
             duration = self.estimate_duration(text) / speed
-            
+
             return {
                 'success': True,
                 'file_path': output_path,
                 'duration': duration,
                 'format': 'mp3'
             }
-            
+
         except ImportError:
             return {'success': False, 'error': 'openai package not installed'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
         finally:
-            # 清理临时文件
             for temp_file in temp_files:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
