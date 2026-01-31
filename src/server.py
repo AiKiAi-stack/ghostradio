@@ -11,8 +11,10 @@ import argparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 from typing import Dict, Any, Optional
+from pathlib import Path
 
 from src.config import get_config
+from src.api_routes import handle_api_request
 
 
 def get_server_config() -> Dict[str, Any]:
@@ -97,16 +99,36 @@ class WebhookHandler(BaseHTTPRequestHandler):
 </html>"""
 
     def do_GET(self) -> None:
-        """处理 GET 请求 - 健康检查和简单页面"""
+        """处理 GET 请求"""
+        # API 路由
+        if self.path.startswith('/api/'):
+            status_code, data, content_type = handle_api_request(self, self.path, 'GET')
+            self._send_response(status_code, data, content_type)
+            return
+        
+        # 静态文件服务
+        if self.path.startswith('/episodes/'):
+            self._serve_static_file(self.path[1:])  # 移除开头的 /
+            return
+        
+        # 页面路由
         if self.path == "/health":
             self._send_json(200, {"status": "ok", "service": "ghostradio-trigger"})
         elif self.path == "/":
-            self._send_html(200, self._get_index_page())
+            # 返回新的前端页面
+            self._serve_index_page()
         else:
             self._send_json(404, {"error": "Not found"})
 
     def do_POST(self) -> None:
-        """处理 POST 请求 - 接收 URL"""
+        """处理 POST 请求"""
+        # API 路由
+        if self.path.startswith('/api/'):
+            status_code, data, content_type = handle_api_request(self, self.path, 'POST')
+            self._send_response(status_code, data, content_type)
+            return
+        
+        # Webhook 路由
         if self.path == "/webhook":
             self._handle_webhook()
         else:
@@ -164,6 +186,61 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.log_message("Unexpected error: %s", str(e))
             self._send_json(500, {"error": str(e)})
             return None
+
+    def _send_response(self, status_code: int, data: Any, content_type: str) -> None:
+        """发送通用响应"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', content_type)
+        self.end_headers()
+        
+        if content_type == 'application/json':
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+        else:
+            self.wfile.write(str(data).encode('utf-8'))
+
+    def _serve_static_file(self, file_path: str) -> None:
+        """提供静态文件服务"""
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                self._send_json(404, {"error": "File not found"})
+                return
+            
+            # 根据文件扩展名设置 Content-Type
+            content_type = 'application/octet-stream'
+            if path.suffix == '.mp3':
+                content_type = 'audio/mpeg'
+            elif path.suffix == '.html':
+                content_type = 'text/html'
+            elif path.suffix == '.css':
+                content_type = 'text/css'
+            elif path.suffix == '.js':
+                content_type = 'application/javascript'
+            
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(path.stat().st_size))
+            self.end_headers()
+            
+            with open(path, 'rb') as f:
+                self.wfile.write(f.read())
+                
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
+
+    def _serve_index_page(self) -> None:
+        """提供前端页面"""
+        try:
+            index_path = Path("episodes/index.html")
+            if index_path.exists():
+                with open(index_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self._send_html(200, content)
+            else:
+                # 返回默认的简单页面
+                self._send_html(200, self._get_index_page())
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
 
 
 def run_server() -> None:

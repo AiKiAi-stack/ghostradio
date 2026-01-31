@@ -3,196 +3,760 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GhostRadio - AI 播客</title>
+    <title>GhostRadio - AI 播客生成器</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
+        :root {
+            --primary: #667eea;
+            --primary-dark: #5a67d8;
+            --secondary: #764ba2;
+            --success: #48bb78;
+            --warning: #ed8936;
+            --error: #f56565;
+            --bg: #f7fafc;
+            --card-bg: #ffffff;
+            --text: #2d3748;
+            --text-light: #718096;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
             line-height: 1.6;
-            color: #333;
-            background: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
             padding: 20px;
         }
-        
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        
-        header {
+
+        /* Header */
+        .header {
             text-align: center;
             padding: 40px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             color: white;
-            border-radius: 10px;
+            border-radius: 16px;
             margin-bottom: 30px;
+            box-shadow: var(--shadow-lg);
         }
-        
-        header h1 {
-            font-size: 2.5em;
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
             margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
         }
-        
-        header p {
-            font-size: 1.1em;
+
+        .header p {
+            font-size: 1.1rem;
             opacity: 0.9;
         }
-        
-        .subscribe-section {
+
+        /* Cards */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Model Selection */
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+        }
+
+        .model-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .model-label {
+            font-weight: 500;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .model-select {
+            padding: 12px 16px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
             background: white;
-            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23667eea' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 40px;
+        }
+
+        .model-select:hover {
+            border-color: var(--primary);
+        }
+
+        .model-select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .model-info {
+            font-size: 0.85rem;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        /* URL Input */
+        .url-input-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .url-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 14px 18px;
+            border: 2px solid var(--border);
             border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            font-size: 1rem;
+            transition: all 0.2s;
         }
-        
-        .subscribe-section h2 {
-            margin-bottom: 15px;
-            color: #667eea;
+
+        .url-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-        
-        .rss-link {
-            display: inline-block;
+
+        .url-input::placeholder {
+            color: var(--text-light);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn-icon {
+            padding: 10px 16px;
+            font-size: 0.9rem;
+        }
+
+        /* Progress */
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress-container.active {
+            display: block;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .progress-label {
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .progress-percent {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-status {
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+
+        /* Result Section */
+        .result-container {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .result-container.active {
+            display: block;
+        }
+
+        .result-card {
+            background: linear-gradient(135deg, #f0fff4 0%, #e6fffa 100%);
+            border: 2px solid var(--success);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .result-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--success);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Audio Player */
+        .audio-section {
+            margin-bottom: 20px;
+        }
+
+        .audio-label {
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .audio-player {
+            width: 100%;
+            height: 50px;
+            border-radius: 8px;
+        }
+
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn-copy {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-download {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-rss {
             background: #ff6600;
             color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
         }
-        
-        .rss-link:hover {
-            background: #e55a00;
+
+        /* Episodes List */
+        .episodes-section {
+            margin-top: 30px;
         }
-        
-        .episodes-list {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .episodes-list h2 {
-            margin-bottom: 20px;
-            color: #667eea;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
-        }
-        
+
         .episode-item {
-            padding: 20px;
-            border-bottom: 1px solid #eee;
-            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
         }
-        
+
         .episode-item:hover {
-            background: #f9f9f9;
+            background: var(--bg);
         }
-        
+
         .episode-item:last-child {
             border-bottom: none;
         }
-        
+
+        .episode-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .episode-content {
+            flex: 1;
+        }
+
         .episode-title {
-            font-size: 1.2em;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #333;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
         }
-        
+
         .episode-meta {
-            font-size: 0.9em;
-            color: #666;
-            margin-bottom: 15px;
+            font-size: 0.85rem;
+            color: var(--text-light);
         }
-        
-        .episode-meta span {
-            margin-right: 15px;
+
+        .episode-actions {
+            display: flex;
+            gap: 8px;
         }
-        
-        audio {
-            width: 100%;
-            margin-top: 10px;
+
+        .btn-small {
+            padding: 8px 12px;
+            font-size: 0.85rem;
         }
-        
+
+        /* Empty State */
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #999;
+            color: var(--text-light);
         }
-        
-        .empty-state h3 {
-            font-size: 1.5em;
-            margin-bottom: 10px;
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 16px;
+            opacity: 0.5;
         }
-        
-        footer {
-            text-align: center;
-            padding: 30px;
-            color: #999;
-            font-size: 0.9em;
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--text);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 10px;
+            box-shadow: var(--shadow-lg);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
         }
-        
-        @media (max-width: 600px) {
-            header h1 {
-                font-size: 1.8em;
+
+        .toast.show {
+            display: flex;
+        }
+
+        .toast.success {
+            background: var(--success);
+        }
+
+        .toast.error {
+            background: var(--error);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
             }
-            
-            .episode-title {
-                font-size: 1.1em;
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+            .header h1 {
+                font-size: 1.75rem;
+            }
+
+            .model-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .url-input-group {
+                flex-direction: column;
+            }
+
+            .action-buttons {
+                justify-content: center;
+            }
+
+            .episode-item {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .episode-actions {
+                width: 100%;
+                justify-content: center;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
+        <!-- Header -->
+        <div class="header">
             <h1>🎙️ GhostRadio</h1>
-            <p>AI 生成的个人播客</p>
-        </header>
-        
-        <div class="subscribe-section">
-            <h2>订阅播客</h2>
-            <p>使用 RSS 阅读器或播客应用订阅：</p>
-            <br>
-            <a href="episodes/feed.xml" class="rss-link" target="_blank">📻 RSS Feed</a>
+            <p>AI 驱动的播客生成器 - 将文章转换为语音播客</p>
         </div>
-        
-        <div class="episodes-list">
-            <h2>节目列表</h2>
-            <div id="episodes-container">
+
+        <!-- Model Selection -->
+        <div class="card">
+            <div class="card-title">⚙️ 模型配置</div>
+            <div class="model-grid">
+                <div class="model-group">
+                    <label class="model-label">总结模型 (LLM)</label>
+                    <select class="model-select" id="llm-model">
+                        <option value="nvidia">NVIDIA (推荐)</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+                    <div class="model-info">选择用于文章总结的 AI 模型</div>
+                </div>
+                <div class="model-group">
+                    <label class="model-label">语音模型 (TTS)</label>
+                    <select class="model-select" id="tts-model">
+                        <option value="volcengine">火山引擎 (推荐)</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="edge-tts">Edge TTS (免费)</option>
+                    </select>
+                    <div class="model-info">选择用于语音合成的模型</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- URL Input -->
+        <div class="card">
+            <div class="card-title">🔗 输入文章链接</div>
+            <div class="url-input-group">
+                <input 
+                    type="url" 
+                    class="url-input" 
+                    id="url-input" 
+                    placeholder="https://example.com/article"
+                    autocomplete="off"
+                >
+                <button class="btn btn-primary" id="generate-btn" onclick="startGeneration()">
+                    <span>🚀 生成播客</span>
+                </button>
+            </div>
+
+            <!-- Progress -->
+            <div class="progress-container" id="progress-container">
+                <div class="progress-header">
+                    <span class="progress-label">生成进度</span>
+                    <span class="progress-percent" id="progress-percent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-status" id="progress-status">准备开始...</div>
+            </div>
+
+            <!-- Result -->
+            <div class="result-container" id="result-container">
+                <div class="result-card">
+                    <div class="result-title">
+                        <span>✅</span>
+                        <span>生成成功！</span>
+                    </div>
+                    
+                    <div class="audio-section">
+                        <div class="audio-label">🎧 在线试听</div>
+                        <audio class="audio-player" id="result-audio" controls>
+                            <source src="" type="audio/mpeg">
+                            您的浏览器不支持音频播放。
+                        </audio>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button class="btn btn-icon btn-copy" onclick="copyUrl()">
+                            <span>📋</span>
+                            <span>复制链接</span>
+                        </button>
+                        <button class="btn btn-icon btn-download" onclick="downloadAudio()">
+                            <span>⬇️</span>
+                            <span>下载 MP3</span>
+                        </button>
+                        <a href="episodes/feed.xml" class="btn btn-icon btn-rss" target="_blank">
+                            <span>📻</span>
+                            <span>RSS 订阅</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Episodes List -->
+        <div class="card episodes-section">
+            <div class="card-title">📚 历史节目</div>
+            <div id="episodes-list">
                 <div class="empty-state">
+                    <div class="empty-state-icon">🎙️</div>
                     <h3>暂无节目</h3>
                     <p>提交 URL 后，节目将自动显示在这里</p>
                 </div>
             </div>
         </div>
-        
-        <footer>
-            <p>Powered by GhostRadio - 极致省资源的 AI 播客生成器</p>
-        </footer>
     </div>
-    
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <span id="toast-icon">✓</span>
+        <span id="toast-message">操作成功</span>
+    </div>
+
     <script>
-        // 动态加载节目列表
+        // State
+        let currentJobId = null;
+        let progressInterval = null;
+        let currentAudioUrl = '';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadEpisodes();
+        });
+
+        // Start Generation
+        async function startGeneration() {
+            const urlInput = document.getElementById('url-input');
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                showToast('请输入文章链接', 'error');
+                urlInput.focus();
+                return;
+            }
+
+            if (!isValidUrl(url)) {
+                showToast('请输入有效的 URL', 'error');
+                return;
+            }
+
+            const llmModel = document.getElementById('llm-model').value;
+            const ttsModel = document.getElementById('tts-model').value;
+            
+            // UI Updates
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="spinner"></span><span>生成中...</span>';
+            
+            showProgress();
+            updateProgress(10, '正在提交任务...');
+
+            try {
+                // Submit job
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: url,
+                        llm_model: llmModel,
+                        tts_model: ttsModel
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('提交失败');
+                }
+
+                const data = await response.json();
+                currentJobId = data.job_id;
+                
+                updateProgress(20, '任务已提交，正在处理...');
+                
+                // Start polling progress
+                startProgressPolling();
+                
+            } catch (error) {
+                showToast('提交失败: ' + error.message, 'error');
+                resetUI();
+            }
+        }
+
+        // Poll Progress
+        function startProgressPolling() {
+            progressInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/progress/${currentJobId}`);
+                    const data = await response.json();
+                    
+                    updateProgress(data.progress, data.status);
+                    
+                    if (data.status === 'completed') {
+                        clearInterval(progressInterval);
+                        showResult(data.result);
+                        loadEpisodes();
+                    } else if (data.status === 'failed') {
+                        clearInterval(progressInterval);
+                        showToast('生成失败: ' + data.error, 'error');
+                        resetUI();
+                    }
+                } catch (error) {
+                    console.error('Progress polling error:', error);
+                }
+            }, 2000);
+        }
+
+        // Update Progress UI
+        function updateProgress(percent, status) {
+            document.getElementById('progress-percent').textContent = percent + '%';
+            document.getElementById('progress-fill').style.width = percent + '%';
+            document.getElementById('progress-status').textContent = status;
+        }
+
+        // Show Progress Section
+        function showProgress() {
+            document.getElementById('progress-container').classList.add('active');
+            document.getElementById('result-container').classList.remove('active');
+        }
+
+        // Show Result
+        function showResult(result) {
+            document.getElementById('progress-container').classList.remove('active');
+            document.getElementById('result-container').classList.add('active');
+            
+            currentAudioUrl = result.audio_url;
+            
+            const audioPlayer = document.getElementById('result-audio');
+            audioPlayer.src = result.audio_url;
+            
+            resetUI();
+            showToast('播客生成成功！', 'success');
+        }
+
+        // Reset UI
+        function resetUI() {
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<span>🚀</span><span>生成播客</span>';
+        }
+
+        // Copy URL
+        function copyUrl() {
+            if (!currentAudioUrl) return;
+            
+            navigator.clipboard.writeText(window.location.origin + '/' + currentAudioUrl)
+                .then(() => showToast('链接已复制到剪贴板', 'success'))
+                .catch(() => showToast('复制失败', 'error'));
+        }
+
+        // Download Audio
+        function downloadAudio() {
+            if (!currentAudioUrl) return;
+            
+            const link = document.createElement('a');
+            link.href = currentAudioUrl;
+            link.download = 'podcast-' + new Date().getTime() + '.mp3';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast('开始下载...', 'success');
+        }
+
+        // Load Episodes
         async function loadEpisodes() {
             try {
-                const response = await fetch('episodes/episodes.json');
-                if (!response.ok) {
-                    throw new Error('Failed to load episodes');
-                }
+                const response = await fetch('/api/episodes');
+                if (!response.ok) return;
                 
                 const episodes = await response.json();
-                const container = document.getElementById('episodes-container');
+                const container = document.getElementById('episodes-list');
                 
                 if (episodes.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
+                            <div class="empty-state-icon">🎙️</div>
                             <h3>暂无节目</h3>
                             <p>提交 URL 后，节目将自动显示在这里</p>
                         </div>
@@ -200,62 +764,102 @@
                     return;
                 }
                 
-                container.innerHTML = episodes.map(episode => `
+                container.innerHTML = episodes.map(ep => `
                     <div class="episode-item">
-                        <div class="episode-title">${escapeHtml(episode.title)}</div>
-                        <div class="episode-meta">
-                            <span>📅 ${formatDate(episode.created)}</span>
-                            <span>⏱️ ${formatDuration(episode.duration)}</span>
-                            <span>💾 ${formatSize(episode.size_mb)}</span>
+                        <div class="episode-icon">🎵</div>
+                        <div class="episode-content">
+                            <div class="episode-title">${escapeHtml(ep.title)}</div>
+                            <div class="episode-meta">
+                                ${formatDate(ep.created)} · ${formatDuration(ep.duration)} · ${formatSize(ep.size_mb)}
+                            </div>
                         </div>
-                        <audio controls preload="none">
-                            <source src="episodes/${episode.audio_file}" type="${episode.mime_type || 'audio/mpeg'}">
-                            您的浏览器不支持音频播放。
-                        </audio>
+                        <div class="episode-actions">
+                            <button class="btn btn-secondary btn-small" onclick="playEpisode('${ep.audio_file}')">
+                                ▶️ 播放
+                            </button>
+                            <a href="${ep.audio_file}" download class="btn btn-secondary btn-small">
+                                ⬇️ 下载
+                            </a>
+                        </div>
                     </div>
                 `).join('');
                 
             } catch (error) {
-                console.error('Error loading episodes:', error);
+                console.error('Load episodes error:', error);
             }
         }
-        
-        // HTML 转义
+
+        // Play Episode
+        function playEpisode(url) {
+            const audio = document.getElementById('result-audio');
+            audio.src = url;
+            audio.play();
+            
+            // Scroll to player
+            document.getElementById('result-container').classList.add('active');
+            audio.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // Show Toast
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const msg = document.getElementById('toast-message');
+            
+            toast.className = 'toast show ' + type;
+            icon.textContent = type === 'success' ? '✓' : '✗';
+            msg.textContent = message;
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Utilities
+        function isValidUrl(string) {
+            try {
+                new URL(string);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
-        
-        // 格式化日期
+
         function formatDate(dateString) {
             const date = new Date(dateString);
             return date.toLocaleDateString('zh-CN', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
             });
         }
-        
-        // 格式化时长
+
         function formatDuration(seconds) {
-            if (!seconds) return '未知';
+            if (!seconds) return '0:00';
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
-        
-        // 格式化文件大小
+
         function formatSize(mb) {
-            if (!mb) return '未知';
-            if (mb < 1) {
-                return `${(mb * 1024).toFixed(1)} KB`;
-            }
+            if (!mb) return '0 MB';
+            if (mb < 1) return `${(mb * 1024).toFixed(0)} KB`;
             return `${mb.toFixed(1)} MB`;
         }
-        
-        // 页面加载完成后加载节目
-        document.addEventListener('DOMContentLoaded', loadEpisodes);
+
+        // Enter key to submit
+        document.getElementById('url-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                startGeneration();
+            }
+        });
     </script>
 </body>
 </html>
