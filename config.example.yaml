@@ -88,3 +88,10 @@ scheduler:
 server:
   host: "0.0.0.0"  # 监听地址
   port: 8080  # 监听端口
+
+# 8. 通知回调 (Webhooks)
+notifications:
+  enabled: false  # 是否启用通知
+  webhooks:
+    - "https://your-webhook-url.com/slack"
+    - "https://your-webhook-url.com/telegram"

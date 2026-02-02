@@ -27,6 +27,10 @@ from src.config import get_config
 from src.file_lock import FileLock
 from src.job_queue import JobQueue
 from src.episode_metadata import get_metadata_manager
+from src.audio_utils import get_audio_duration
+from src.job_status_updater import JobStatusUpdater
+from src.job_models import JobStatus
+from src.webhook_manager import get_webhook_manager
 from typing import Optional, Dict, Any
 
 
@@ -43,6 +47,10 @@ class Worker:
         self.llm = LLMProcessor(self.config.get_llm_config())
         self.tts = TTSGenerator(self.config.get_tts_config())
         self.job_queue = JobQueue()
+        self.status_updater = JobStatusUpdater(
+            self.paths.get("logs_dir", "logs") + "/jobs"
+        )
+        self.webhook_manager = get_webhook_manager(self.config.get("notifications", {}))
 
         self._ensure_directories()
 
@@ -139,6 +147,15 @@ class Worker:
 
         try:
             # 1. 获取内容
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    status=JobStatus.PROCESSING,
+                    progress=10,
+                    message="开始抓取内容...",
+                    stage="fetching",
+                )
+
             fetch_start = time.time()
             self._log("Step 1: Fetching content...")
             content_result = self.fetcher.fetch(url)
@@ -158,6 +175,14 @@ class Worker:
             llm_duration = 0
             if need_summary:
                 # 2. LLM 处理
+                if job_id:
+                    self.status_updater.update_job(
+                        job_id,
+                        progress=25,
+                        message=f"正在生成播客脚本 ({llm_provider})...",
+                        stage="llm_processing",
+                    )
+
                 llm_start = time.time()
                 self._log("Step 2: Processing with LLM...")
                 llm_result = self.llm.process(title, content)
@@ -172,10 +197,23 @@ class Worker:
                 llm_tokens = llm_result.get("tokens_used", 0)
                 llm_provider = self.llm.provider_info.name
                 self._log(f"Generated script ({llm_tokens} tokens)")
+
+                if job_id:
+                    self.status_updater.update_job(
+                        job_id,
+                        progress=50,
+                        message="脚本生成完成",
+                    )
             else:
                 # 直接使用内容
                 script = content
                 self._log("Step 2: Using raw content (no summary)")
+                if job_id:
+                    self.status_updater.update_job(
+                        job_id,
+                        progress=50,
+                        message="跳过总结，直接使用正文",
+                    )
 
             # 保存脚本
             script_path = os.path.join(self.paths["episodes_dir"], f"{episode_id}.txt")
@@ -190,6 +228,14 @@ class Worker:
                 f.write(script)
 
             # 3. TTS 生成
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    progress=60,
+                    message=f"正在合成语音 ({self.tts.provider_info['name']})...",
+                    stage="tts_generating",
+                )
+
             tts_start = time.time()
             self._log("Step 3: Generating audio...")
             audio_format = self.resources["audio_format"]
@@ -211,9 +257,22 @@ class Worker:
                 f"Generated audio: {audio_path} ({tts_result.get('duration', 0)}s)"
             )
 
+            actual_duration = get_audio_duration(audio_path)
+            if actual_duration > 0:
+                self._log(f"Actual audio duration detected: {actual_duration:.2f}s")
+            else:
+                actual_duration = float(tts_result.get("duration", 0))
+
             total_duration = time.time() - start_time
 
             # 4. 保存元数据
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    progress=90,
+                    message="正在保存节目信息...",
+                )
+
             try:
                 metadata_manager = get_metadata_manager()
                 audio_size_bytes = os.path.getsize(audio_path)
@@ -225,7 +284,7 @@ class Worker:
                     "audio_file": os.path.basename(audio_path),
                     "size_bytes": audio_size_bytes,
                     "size_mb": round(audio_size_bytes / (1024 * 1024), 2),
-                    "duration_seconds": tts_result.get("duration", 0),
+                    "duration_seconds": actual_duration,
                     "source_url": url,
                     "tokens_used": {"llm": llm_tokens},
                     "providers_used": {
@@ -247,19 +306,46 @@ class Worker:
             # 5. 清理旧文件
             self._cleanup_old_episodes()
 
-            return {
+            result_data = {
                 "success": True,
                 "episode_id": episode_id,
                 "title": title,
                 "url": url,
                 "audio_path": audio_path,
                 "script_path": script_path,
-                "duration": tts_result.get("duration", 0),
+                "duration": actual_duration,
                 "need_summary": need_summary,
+                "audio_url": f"episodes/{os.path.basename(audio_path)}",
             }
+
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    status=JobStatus.COMPLETED,
+                    progress=100,
+                    message="播客生成成功！",
+                    result=result_data,
+                )
+                self.webhook_manager.send_notification("job_success", result_data)
+
+            return result_data
 
         except Exception as e:
             self._log(f"Error processing URL: {e}", "ERROR")
+            if job_id:
+                error_data = {
+                    "job_id": job_id,
+                    "url": url,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+                self.status_updater.update_job(
+                    job_id,
+                    status=JobStatus.FAILED,
+                    error=str(e),
+                    message=f"处理失败: {str(e)}",
+                )
+                self.webhook_manager.send_notification("job_failed", error_data)
             return {"success": False, "error": str(e), "url": url}
 
     def run(self):

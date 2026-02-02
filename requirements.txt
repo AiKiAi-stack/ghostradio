@@ -24,3 +24,6 @@ tenacity>=8.2.0
 
 # System monitoring and health checks
 psutil>=5.9.0
+
+# Audio metadata extraction
+mutagen>=1.47.0

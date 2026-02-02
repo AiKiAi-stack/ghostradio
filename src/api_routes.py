@@ -18,151 +18,12 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
-from logger import get_logger
-from job_queue import JobQueue
+from src.job_models import JobStatus, Job
+from src.logger import get_logger
+from src.job_queue import JobQueue
 
 logger = get_logger("api")
 job_queue = JobQueue()
-
-
-class JobStatus:
-    """任务状态常量"""
-
-    PENDING = "pending"
-    QUEUED = "queued"
-    PROCESSING = "processing"
-    FETCHING = "fetching"  # 获取内容
-    LLM_PROCESSING = "llm_processing"  # LLM处理
-    TTS_GENERATING = "tts_generating"  # TTS生成
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    TIMEOUT = "timeout"
-
-
-class Job:
-    """任务对象"""
-
-    def __init__(
-        self,
-        job_id: str,
-        url: str,
-        llm_model: str,
-        tts_model: str,
-        need_summary: bool = True,
-        tts_config: Optional[Dict[str, Any]] = None,
-    ):
-        self.id = job_id
-        self.url = url
-        self.llm_model = llm_model
-        self.tts_model = tts_model
-        self.need_summary = need_summary
-        self.tts_config = tts_config or {}
-        self.status = JobStatus.PENDING
-        self.progress = 0
-        self.message = "等待处理"
-        self.created_at = datetime.now()
-        self.updated_at = self.created_at
-        self.completed_at: Optional[datetime] = None
-        self.result: Optional[Dict[str, Any]] = None
-        self.error: Optional[str] = None
-        self.error_details: Optional[Dict[str, Any]] = None
-        self.cancelled = False
-        self.stage_start_time: Optional[datetime] = None
-        self.stage = ""
-
-        # 详细进度
-        self.stages: List[Dict[str, Any]] = []
-
-    def to_dict(self) -> Dict[str, Any]:
-        """转换为字典"""
-        return {
-            "id": self.id,
-            "url": self.url,
-            "llm_model": self.llm_model,
-            "tts_model": self.tts_model,
-            "tts_config": self.tts_config,
-            "need_summary": self.need_summary,
-            "status": self.status,
-            "progress": self.progress,
-            "message": self.message,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-            "completed_at": self.completed_at.isoformat()
-            if self.completed_at
-            else None,
-            "result": self.result,
-            "error": self.error,
-            "error_details": self.error_details,
-            "cancelled": self.cancelled,
-            "stage": self.stage,
-            "stages": self.stages,
-        }
-
-    def update(
-        self,
-        status: Optional[str] = None,
-        progress: Optional[int] = None,
-        message: Optional[str] = None,
-        stage: Optional[str] = None,
-    ) -> None:
-        """更新任务状态"""
-        if status:
-            self.status = status
-        if progress is not None:
-            self.progress = progress
-        if message:
-            self.message = message
-        if stage:
-            self.stage = stage
-            self.stage_start_time = datetime.now()
-
-        self.updated_at = datetime.now()
-
-        # 记录阶段
-        if stage:
-            self.stages.append(
-                {
-                    "stage": stage,
-                    "progress": progress or self.progress,
-                    "timestamp": self.updated_at.isoformat(),
-                }
-            )
-
-    def set_error(self, error: str, details: Optional[Dict[str, Any]] = None) -> None:
-        """设置错误信息"""
-        self.status = JobStatus.FAILED
-        self.error = error
-        self.error_details = details
-        self.completed_at = datetime.now()
-        self.message = f"失败: {error}"
-
-    def set_result(self, result: Dict[str, Any]) -> None:
-        """设置结果"""
-        self.status = JobStatus.COMPLETED
-        self.result = result
-        self.completed_at = datetime.now()
-        self.progress = 100
-        self.message = "生成完成"
-
-    def cancel(self, reason: str = "用户取消") -> None:
-        """取消任务"""
-        self.cancelled = True
-        self.status = JobStatus.CANCELLED
-        self.message = f"已取消: {reason}"
-        self.completed_at = datetime.now()
-
-    def get_elapsed_time(self) -> float:
-        """获取已运行时间（秒）"""
-        if self.completed_at:
-            return (self.completed_at - self.created_at).total_seconds()
-        return (datetime.now() - self.created_at).total_seconds()
-
-    def get_stage_elapsed_time(self) -> Optional[float]:
-        """获取当前阶段运行时间（秒）"""
-        if self.stage_start_time:
-            return (datetime.now() - self.stage_start_time).total_seconds()
-        return None
 
 
 class JobManager:
@@ -191,7 +52,7 @@ class JobManager:
                 try:
                     with open(job_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        # 这里可以恢复任务对象
+                        # 延迟加载，只在需要时通过 get_job 加载
                 except Exception as e:
                     logger.warning(f"Failed to load job file {job_file}: {e}")
         except Exception as e:
@@ -216,45 +77,26 @@ class JobManager:
             return job
 
     def get_job(self, job_id: str) -> Optional[Job]:
-        """获取任务"""
+        """获取任务，总是尝试从磁盘重新加载以同步 worker 进度"""
         with self._lock:
-            # 先查内存
-            if job_id in self._jobs:
-                return self._jobs[job_id]
-
-            # 再查文件
             job_file = self.jobs_dir / f"{job_id}.json"
             if job_file.exists():
                 try:
                     with open(job_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                        job = Job(
-                            data["id"],
-                            data["url"],
-                            data["llm_model"],
-                            data["tts_model"],
-                            need_summary=data.get("need_summary", True),
-                            tts_config=data.get("tts_config", {}),
-                        )
-                        # 恢复状态
-                        job.status = data.get("status", JobStatus.PENDING)
-                        job.progress = data.get("progress", 0)
-                        job.message = data.get("message", "")
-                        job.error = data.get("error")
-                        job.error_details = data.get("error_details")
-                        job.result = data.get("result")
-                        job.cancelled = data.get("cancelled", False)
+                        job = Job.from_dict(data)
                         self._jobs[job_id] = job
                         return job
                 except Exception as e:
                     logger.error(f"Failed to load job {job_id}: {e}")
 
-            return None
+            # 如果文件不存在，但在内存中（虽然理论上不应该发生）
+            return self._jobs.get(job_id)
 
     def update_job(self, job_id: str, **kwargs) -> None:
         """更新任务"""
         with self._lock:
-            job = self._jobs.get(job_id)
+            job = self.get_job(job_id)
             if job:
                 job.update(**kwargs)
                 self._save_job(job)
@@ -274,7 +116,7 @@ class JobManager:
     ) -> None:
         """设置任务错误"""
         with self._lock:
-            job = self._jobs.get(job_id)
+            job = self.get_job(job_id)
             if job:
                 job.set_error(error, details)
                 self._save_job(job)
@@ -283,7 +125,7 @@ class JobManager:
     def set_job_result(self, job_id: str, result: Dict[str, Any]) -> None:
         """设置任务结果"""
         with self._lock:
-            job = self._jobs.get(job_id)
+            job = self.get_job(job_id)
             if job:
                 job.set_result(result)
                 self._save_job(job)
@@ -298,13 +140,16 @@ class JobManager:
     def cancel_job(self, job_id: str, reason: str = "用户取消") -> bool:
         """取消任务"""
         with self._lock:
-            job = self._jobs.get(job_id)
+            job = self.get_job(job_id)
             if job:
                 # 只能取消正在进行的任务
                 if job.status in [
                     JobStatus.PENDING,
                     JobStatus.QUEUED,
                     JobStatus.PROCESSING,
+                    JobStatus.FETCHING,
+                    JobStatus.LLM_PROCESSING,
+                    JobStatus.TTS_GENERATING,
                 ]:
                     job.cancel(reason)
                     self._save_job(job)
@@ -314,7 +159,7 @@ class JobManager:
 
     def check_timeout(self, job_id: str) -> Optional[str]:
         """检查任务是否超时，返回警告信息"""
-        job = self._jobs.get(job_id)
+        job = self.get_job(job_id)
         if not job:
             return None
 
@@ -345,8 +190,14 @@ class JobManager:
 
     def get_all_jobs(self) -> List[Job]:
         """获取所有任务"""
-        with self._lock:
-            return list(self._jobs.values())
+        # 同步所有磁盘上的任务
+        all_jobs = []
+        for job_file in self.jobs_dir.glob("*.json"):
+            job_id = job_file.stem
+            job = self.get_job(job_id)
+            if job:
+                all_jobs.append(job)
+        return all_jobs
 
 
 # 全局任务管理器
@@ -521,45 +372,6 @@ def handle_progress(job_id: str, job_manager: JobManager) -> tuple:
 
     # 检查超时
     timeout_warning = job_manager.check_timeout(job_id)
-
-    # 模拟进度更新（实际应该由 worker 更新）
-    if job.status in [JobStatus.PENDING, JobStatus.QUEUED]:
-        # 检查队列文件，看是否已被处理
-        queue_file = Path("queue.txt")
-        if queue_file.exists():
-            with open(queue_file, "r", encoding="utf-8") as f:
-                content = f.read()
-                # 如果 job_id 不在队列中，说明正在处理或已完成
-                if job_id not in content:
-                    # 检查 episodes 目录是否有结果
-                    episodes_dir = Path("episodes")
-                    if episodes_dir.exists():
-                        # 查找包含 job_id 的文件
-                        for file in episodes_dir.glob("*.mp3"):
-                            if job_id in file.name:
-                                job_manager.set_job_result(
-                                    job_id,
-                                    {
-                                        "audio_url": f"episodes/{file.name}",
-                                        "title": file.stem,
-                                    },
-                                )
-                                break
-                        else:
-                            # 正在处理中
-                            if job.status == JobStatus.QUEUED:
-                                job_manager.update_job(
-                                    job_id,
-                                    status=JobStatus.PROCESSING,
-                                    progress=10,
-                                    message="开始处理...",
-                                    stage="fetching",
-                                )
-
-    # 再次获取最新的任务状态，确保 job 不为 None
-    job = job_manager.get_job(job_id)
-    if not job:
-        return 404, {"error": "Job not found"}, "application/json"
 
     response = {
         "job_id": job_id,
