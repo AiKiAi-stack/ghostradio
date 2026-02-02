@@ -9,6 +9,7 @@ import sys
 import json
 import signal
 import argparse
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -128,6 +129,7 @@ class Worker:
             tts_config: TTS 特定配置
         """
         episode_id = self._generate_episode_id()
+        start_time = time.time()
         self._log(f"Processing URL: {url}")
         self._log(
             f"Mode: {'With LLM summary' if need_summary else 'Direct URL (no summary)'}"
@@ -137,8 +139,10 @@ class Worker:
 
         try:
             # 1. 获取内容
+            fetch_start = time.time()
             self._log("Step 1: Fetching content...")
             content_result = self.fetcher.fetch(url)
+            fetch_duration = time.time() - fetch_start
 
             if not content_result["success"]:
                 raise Exception(
@@ -151,10 +155,13 @@ class Worker:
 
             llm_tokens = 0
             llm_provider = "none"
+            llm_duration = 0
             if need_summary:
                 # 2. LLM 处理
+                llm_start = time.time()
                 self._log("Step 2: Processing with LLM...")
                 llm_result = self.llm.process(title, content)
+                llm_duration = time.time() - llm_start
 
                 if not llm_result["success"]:
                     raise Exception(
@@ -183,6 +190,7 @@ class Worker:
                 f.write(script)
 
             # 3. TTS 生成
+            tts_start = time.time()
             self._log("Step 3: Generating audio...")
             audio_format = self.resources["audio_format"]
             audio_path = os.path.join(
@@ -192,6 +200,7 @@ class Worker:
             # 传递 tts_config
             tts_params = tts_config or {}
             tts_result = self.tts.generate(script, audio_path, **tts_params)
+            tts_duration = time.time() - tts_start
 
             if not tts_result["success"]:
                 raise Exception(
@@ -201,6 +210,8 @@ class Worker:
             self._log(
                 f"Generated audio: {audio_path} ({tts_result.get('duration', 0)}s)"
             )
+
+            total_duration = time.time() - start_time
 
             # 4. 保存元数据
             try:
@@ -220,6 +231,12 @@ class Worker:
                     "providers_used": {
                         "llm": llm_provider,
                         "tts": self.tts.provider_info["name"],
+                    },
+                    "performance": {
+                        "fetch_seconds": round(fetch_duration, 2),
+                        "llm_seconds": round(llm_duration, 2),
+                        "tts_seconds": round(tts_duration, 2),
+                        "total_seconds": round(total_duration, 2),
                     },
                 }
                 metadata_manager.add_episode(episode_metadata)
@@ -291,7 +308,29 @@ class Worker:
                 results.append(result)
 
                 if queue_file:
-                    self.job_queue.mark_processed(queue_file)
+                    if result["success"]:
+                        self.job_queue.mark_processed(queue_file)
+                    else:
+                        retry_count = job_data.get("retry_count", 0)
+                        max_retries = job_data.get("max_retries", 3)
+
+                        if retry_count < max_retries:
+                            new_queue_id = self.job_queue.retry_job(queue_file)
+                            if new_queue_id:
+                                self._log(
+                                    f"Job retry scheduled: attempt {retry_count + 1}/{max_retries}, new queue_id: {new_queue_id}"
+                                )
+                            else:
+                                self.job_queue.mark_failed(
+                                    queue_file, result.get("error", "Unknown error")
+                                )
+                        else:
+                            self.job_queue.mark_failed(
+                                queue_file, result.get("error", "Max retries exceeded")
+                            )
+                            self._log(
+                                f"Job failed permanently after {max_retries} retries"
+                            )
 
             success_count = sum(1 for r in results if r["success"])
             fail_count = len(results) - success_count

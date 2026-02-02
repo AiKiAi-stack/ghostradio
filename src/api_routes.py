@@ -392,6 +392,22 @@ def handle_api_request(handler, path: str, method: str) -> tuple:
         elif path == "/api/episodes" and method == "GET":
             result = handle_episodes()
 
+        # GET /health - 基础健康检查
+        elif path == "/health" and method == "GET":
+            result = handle_health()
+
+        # GET /health/worker - Worker状态
+        elif path == "/health/worker" and method == "GET":
+            result = handle_health_worker()
+
+        # GET /health/system - 系统资源状态
+        elif path == "/health/system" and method == "GET":
+            result = handle_health_system()
+
+        # GET /health/full - 完整健康状态
+        elif path == "/health/full" and method == "GET":
+            result = handle_health_full()
+
         else:
             result = (404, {"error": "Not found"}, "application/json")
 
@@ -622,4 +638,87 @@ def handle_episodes() -> tuple:
 
     except Exception as e:
         logger.error("Failed to load episodes from metadata", error=e)
+        return 500, {"error": str(e)}, "application/json"
+
+
+def handle_health() -> tuple:
+    """Basic health check"""
+    return (
+        200,
+        {"status": "ok", "timestamp": datetime.now().isoformat()},
+        "application/json",
+    )
+
+
+def handle_health_worker() -> tuple:
+    """Worker health status"""
+    try:
+        from src.health_checker import get_health_checker
+        from src.config import get_config
+
+        config = get_config()
+        health_checker = get_health_checker(config._config)
+
+        worker_status = health_checker.get_worker_status()
+        queue_status = health_checker.get_queue_status()
+
+        return (
+            200,
+            {
+                "status": "ok",
+                "timestamp": datetime.now().isoformat(),
+                "worker": worker_status,
+                "queue": queue_status,
+            },
+            "application/json",
+        )
+
+    except Exception as e:
+        logger.error("Failed to get worker health", error=e)
+        return 500, {"error": str(e)}, "application/json"
+
+
+def handle_health_system() -> tuple:
+    """System resource health"""
+    try:
+        from src.health_checker import get_health_checker
+        from src.config import get_config
+
+        config = get_config()
+        health_checker = get_health_checker(config._config)
+
+        system_status = health_checker.get_system_resources()
+        episodes_status = health_checker.get_episodes_status()
+
+        return (
+            200,
+            {
+                "status": "ok",
+                "timestamp": datetime.now().isoformat(),
+                "system": system_status,
+                "episodes": episodes_status,
+            },
+            "application/json",
+        )
+
+    except Exception as e:
+        logger.error("Failed to get system health", error=e)
+        return 500, {"error": str(e)}, "application/json"
+
+
+def handle_health_full() -> tuple:
+    """Complete health status"""
+    try:
+        from src.health_checker import get_health_checker
+        from src.config import get_config
+
+        config = get_config()
+        health_checker = get_health_checker(config._config)
+
+        full_health = health_checker.get_full_health()
+
+        return 200, full_health, "application/json"
+
+    except Exception as e:
+        logger.error("Failed to get full health", error=e)
         return 500, {"error": str(e)}, "application/json"

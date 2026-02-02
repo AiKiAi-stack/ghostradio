@@ -21,3 +21,6 @@ websockets>=14.0
 
 # Retry mechanism for network resilience
 tenacity>=8.2.0
+
+# System monitoring and health checks
+psutil>=5.9.0

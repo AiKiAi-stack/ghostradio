@@ -15,13 +15,18 @@ class JobQueue:
     """Atomic job queue using individual JSON files"""
 
     def __init__(
-        self, queue_dir: str = "logs/queue", processed_dir: str = "logs/processed"
+        self,
+        queue_dir: str = "logs/queue",
+        processed_dir: str = "logs/processed",
+        failed_dir: str = "logs/failed",
     ):
         self.queue_dir = Path(queue_dir)
         self.processed_dir = Path(processed_dir)
+        self.failed_dir = Path(failed_dir)
 
         self.queue_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
+        self.failed_dir.mkdir(parents=True, exist_ok=True)
 
     def add_job(
         self,
@@ -31,6 +36,8 @@ class JobQueue:
         tts_model: str = "volcengine",
         need_summary: bool = True,
         tts_config: Optional[Dict[str, Any]] = None,
+        retry_count: int = 0,
+        max_retries: int = 3,
     ) -> str:
         """Add a new job to the queue"""
         timestamp = datetime.now().isoformat()
@@ -45,6 +52,9 @@ class JobQueue:
             "need_summary": need_summary,
             "tts_config": tts_config or {},
             "created_at": timestamp,
+            "retry_count": retry_count,
+            "max_retries": max_retries,
+            "last_attempt": timestamp if retry_count > 0 else None,
         }
 
         queue_file = self.queue_dir / f"{queue_id}.json"
@@ -79,6 +89,59 @@ class JobQueue:
         except Exception as e:
             print(f"Error moving queue file {queue_file}: {e}")
             return False
+
+    def mark_failed(self, queue_file: str, error: str) -> bool:
+        """Move failed job to failed directory with error info"""
+        try:
+            source = Path(queue_file)
+            if not source.exists():
+                return False
+
+            with open(source, "r", encoding="utf-8") as f:
+                job_data = json.load(f)
+
+            job_data["failed_at"] = datetime.now().isoformat()
+            job_data["error"] = error
+
+            dest = self.failed_dir / source.name
+            with open(dest, "w", encoding="utf-8") as f:
+                json.dump(job_data, f, ensure_ascii=False, indent=2)
+
+            source.unlink()
+            return True
+        except Exception as e:
+            print(f"Error marking job as failed {queue_file}: {e}")
+            return False
+
+    def retry_job(self, queue_file: str) -> Optional[str]:
+        """Retry a failed job with incremented retry count"""
+        try:
+            source = Path(queue_file)
+            with open(source, "r", encoding="utf-8") as f:
+                job_data = json.load(f)
+
+            retry_count = job_data.get("retry_count", 0) + 1
+            max_retries = job_data.get("max_retries", 3)
+
+            if retry_count > max_retries:
+                return None
+
+            new_queue_id = self.add_job(
+                url=job_data["url"],
+                job_id=job_data["job_id"],
+                llm_model=job_data.get("llm_model", "nvidia"),
+                tts_model=job_data.get("tts_model", "volcengine"),
+                need_summary=job_data.get("need_summary", True),
+                tts_config=job_data.get("tts_config", {}),
+                retry_count=retry_count,
+                max_retries=max_retries,
+            )
+
+            source.unlink()
+            return new_queue_id
+        except Exception as e:
+            print(f"Error retrying job {queue_file}: {e}")
+            return None
 
     def clear_old_processed(self, keep_days: int = 7):
         """Clean up old processed job files"""
