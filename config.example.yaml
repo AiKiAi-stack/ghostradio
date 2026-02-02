@@ -43,13 +43,12 @@ tts:
   
   # ===== 火山引擎配置 (推荐) =====
   # 获取 API Key: https://www.volcengine.com/product/speech
-  api_key_env: "VOLCENGINE_TOKEN"  # 从环境变量读取 Token
+  # 注意：现在使用官方播客 WebSocket API
+  api_key_env: "VOLCENGINE_TOKEN"  # 从环境变量读取 Access Token
   appid_env: "VOLCENGINE_APPID"    # 从环境变量读取 AppID
   voice: "zh_female_xiaoxiao"      # 音色列表见文档
   speed: 1.0                       # 语速 (0.5-2.0)
-  volume: 1.0                      # 音量 (0.5-2.0)
-  pitch: 1.0                       # 音调 (0.5-2.0)
-  cluster: "volcano_tts"           # 集群 ID
+  encoding: "mp3"                  # 音频格式 (mp3/wav)
   
   # ===== OpenAI 配置 (备选) =====
   # provider: "openai"

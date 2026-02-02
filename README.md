@@ -76,8 +76,8 @@ export NVIDIA_API_KEY="your-nvidia-api-key"
 # 或 OpenAI API Key
 export OPENAI_API_KEY="your-openai-api-key"
 
-# 火山引擎配置
-export VOLCENGINE_TOKEN="your-volcengine-token"
+# 火山引擎配置 (播客 API)
+export VOLCENGINE_TOKEN="your-volcengine-access-token"
 export VOLCENGINE_APPID="your-volcengine-appid"
 
 # TTS API Key (如使用 OpenAI TTS)
@@ -179,15 +179,17 @@ llm:
 ```yaml
 tts:
   provider: "volcengine"          # volcengine, openai, edge-tts
-  api_key_env: "VOLCENGINE_TOKEN"
+  api_key_env: "VOLCENGINE_TOKEN" # Access Token
+  appid_env: "VOLCENGINE_APPID"   # AppID
   voice: "zh_female_xiaoxiao"     # 音色选择
   speed: 1.0                      # 语速
-  volume: 1.0                     # 音量
-  pitch: 1.0                      # 音调
+  encoding: "mp3"                 # 音频格式 (mp3/wav)
 ```
 
+**注意：** Volcengine 已迁移到官方播客 WebSocket API，需要同时提供 `VOLCENGINE_TOKEN` 和 `VOLCENGINE_APPID`。
+
 备选模型（自动切换）：
-- `volcengine` - 火山引擎（推荐，中文效果好）
+- `volcengine` - 火山引擎播客 API（推荐，中文效果好，WebSocket 协议）
 - `openai` - OpenAI TTS
 - `edge-tts` - 微软 Edge（免费，无需 API Key）
 

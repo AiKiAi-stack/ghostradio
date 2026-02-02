@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 from datetime import datetime, timedelta
 
-from logger import get_logger
+from .logger import get_logger
 
 logger = get_logger("model_health")
 

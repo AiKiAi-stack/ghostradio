@@ -156,7 +156,8 @@ class StructuredLogger:
         job_id: str,
         url: str,
         llm_model: str,
-        tts_model: str
+        tts_model: str,
+        need_summary: bool = True
     ) -> None:
         """记录任务开始"""
         self.info(
@@ -166,6 +167,7 @@ class StructuredLogger:
                 "url": url,
                 "llm_model": llm_model,
                 "tts_model": tts_model,
+                "need_summary": need_summary,
                 "event": "job_start"
             }
         )

@@ -10,7 +10,7 @@ LLM 内容处理模块
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 from .providers import create_provider, ProviderFactory
 from .prompt_manager import PromptManager, get_prompt_manager
