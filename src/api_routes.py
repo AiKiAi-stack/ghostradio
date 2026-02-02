@@ -19,8 +19,10 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 
 from logger import get_logger
+from job_queue import JobQueue
 
 logger = get_logger("api")
+job_queue = JobQueue()
 
 
 class JobStatus:
@@ -462,13 +464,15 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
             url or "manual_input", llm_model, tts_model, need_summary, tts_config
         )
 
-        # 将任务添加到队列（写入 queue.txt）
-        queue_file = Path("queue.txt")
-        timestamp = datetime.now().isoformat()
-        with open(queue_file, "a", encoding="utf-8") as f:
-            f.write(f"{timestamp}|{url}|{job.id}\n")
+        job_queue.add_job(
+            url=url or "manual_input",
+            job_id=job.id,
+            llm_model=llm_model,
+            tts_model=tts_model,
+            need_summary=need_summary,
+            tts_config=tts_config,
+        )
 
-        # 更新任务状态为已排队
         job_manager.update_job(
             job.id, status=JobStatus.QUEUED, progress=5, message="已加入处理队列"
         )
@@ -593,31 +597,29 @@ def handle_cancel(job_id: str, job_manager: JobManager) -> tuple:
 def handle_episodes() -> tuple:
     """处理节目列表请求"""
     try:
-        episodes_dir = Path("episodes")
-        episodes = []
+        from src.episode_metadata import get_metadata_manager, EpisodeMetadataManager
 
-        if episodes_dir.exists():
-            for file in sorted(
-                episodes_dir.glob("*.mp3"),
-                key=lambda x: x.stat().st_mtime,
-                reverse=True,
-            ):
-                stat = file.stat()
-                size_mb = stat.st_size / (1024 * 1024)
+        metadata_manager = get_metadata_manager()
 
-                episodes.append(
-                    {
-                        "id": file.stem,
-                        "title": file.stem.replace("_", " ").title(),
-                        "audio_file": f"episodes/{file.name}",
-                        "created": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                        "size_mb": round(size_mb, 2),
-                        "duration": 0,  # 暂时无法获取时长
-                    }
-                )
+        EpisodeMetadataManager.migrate_from_filesystem()
 
-        return 200, episodes, "application/json"
+        episodes = metadata_manager.get_all_episodes()
+
+        formatted_episodes = []
+        for ep in episodes:
+            formatted_episodes.append(
+                {
+                    "id": ep["id"],
+                    "title": ep.get("title", ep["id"].replace("_", " ").title()),
+                    "audio_file": f"episodes/{ep['audio_file']}",
+                    "created": ep.get("created_at", ""),
+                    "size_mb": ep.get("size_mb", 0),
+                    "duration": ep.get("duration_seconds", 0),
+                }
+            )
+
+        return 200, formatted_episodes, "application/json"
 
     except Exception as e:
-        logger.error("Failed to load episodes", error=e)
+        logger.error("Failed to load episodes from metadata", error=e)
         return 500, {"error": str(e)}, "application/json"

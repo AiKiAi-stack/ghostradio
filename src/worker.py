@@ -22,7 +22,11 @@ from src.config import get_config
 from src.content_fetcher import ContentFetcher
 from src.llm_processor import LLMProcessor
 from src.tts_generator import TTSGenerator
+from src.config import get_config
 from src.file_lock import FileLock
+from src.job_queue import JobQueue
+from src.episode_metadata import get_metadata_manager
+from typing import Optional, Dict, Any
 
 
 class Worker:
@@ -34,12 +38,11 @@ class Worker:
         self.resources = self.config.get_resources_config()
         self.podcast = self.config.get_podcast_config()
 
-        # 初始化组件
         self.fetcher = ContentFetcher()
         self.llm = LLMProcessor(self.config.get_llm_config())
         self.tts = TTSGenerator(self.config.get_tts_config())
+        self.job_queue = JobQueue()
 
-        # 确保目录存在
         self._ensure_directories()
 
     def _ensure_directories(self):
@@ -58,39 +61,6 @@ class Worker:
         if hasattr(self, "_lock") and self._lock:
             self._lock.release()
             self._lock = None
-
-    def _read_queue(self) -> list:
-        """读取队列文件"""
-        queue_file = self.paths["queue_file"]
-
-        if not os.path.exists(queue_file):
-            return []
-
-        with open(queue_file, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        # 解析队列条目
-        queue = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-
-            parts = line.split("|")
-            if len(parts) >= 2:
-                timestamp = parts[0]
-                url = parts[1]
-                job_id = parts[2] if len(parts) >= 3 else None
-                queue.append({"timestamp": timestamp, "url": url, "job_id": job_id})
-
-        return queue
-
-    def _clear_queue(self):
-        """清空队列文件"""
-        queue_file = self.paths["queue_file"]
-        if os.path.exists(queue_file):
-            with open(queue_file, "w", encoding="utf-8") as f:
-                f.write("")
 
     def _log(self, message: str, level: str = "INFO"):
         """记录日志"""
@@ -179,6 +149,8 @@ class Worker:
             content = content_result["content"]
             self._log(f"Fetched: {title} ({len(content)} chars)")
 
+            llm_tokens = 0
+            llm_provider = "none"
             if need_summary:
                 # 2. LLM 处理
                 self._log("Step 2: Processing with LLM...")
@@ -190,9 +162,9 @@ class Worker:
                     )
 
                 script = llm_result["script"]
-                self._log(
-                    f"Generated script ({llm_result.get('tokens_used', 0)} tokens)"
-                )
+                llm_tokens = llm_result.get("tokens_used", 0)
+                llm_provider = self.llm.provider_info.name
+                self._log(f"Generated script ({llm_tokens} tokens)")
             else:
                 # 直接使用内容
                 script = content
@@ -230,7 +202,32 @@ class Worker:
                 f"Generated audio: {audio_path} ({tts_result.get('duration', 0)}s)"
             )
 
-            # 4. 清理旧文件
+            # 4. 保存元数据
+            try:
+                metadata_manager = get_metadata_manager()
+                audio_size_bytes = os.path.getsize(audio_path)
+
+                episode_metadata = {
+                    "id": episode_id,
+                    "title": title,
+                    "created_at": datetime.now().isoformat(),
+                    "audio_file": os.path.basename(audio_path),
+                    "size_bytes": audio_size_bytes,
+                    "size_mb": round(audio_size_bytes / (1024 * 1024), 2),
+                    "duration_seconds": tts_result.get("duration", 0),
+                    "source_url": url,
+                    "tokens_used": {"llm": llm_tokens},
+                    "providers_used": {
+                        "llm": llm_provider,
+                        "tts": self.tts.provider_info["name"],
+                    },
+                }
+                metadata_manager.add_episode(episode_metadata)
+                self._log(f"Metadata saved for episode {episode_id}")
+            except Exception as e:
+                self._log(f"Failed to save metadata: {e}", "WARNING")
+
+            # 5. 清理旧文件
             self._cleanup_old_episodes()
 
             return {
@@ -249,33 +246,31 @@ class Worker:
             return {"success": False, "error": str(e), "url": url}
 
     def run(self):
-        """运行 Worker"""
         self._log("GhostRadio Worker started")
 
-        # 获取锁
         if not self._acquire_lock():
             self._log("Another worker is already running, exiting")
             return
 
         try:
-            # 读取队列
-            queue = self._read_queue()
+            JobQueue.migrate_from_old_queue()
 
-            if not queue:
+            pending_jobs = self.job_queue.get_pending_jobs()
+
+            if not pending_jobs:
                 self._log("Queue is empty, nothing to do")
                 return
 
-            self._log(f"Found {len(queue)} items in queue")
+            self._log(f"Found {len(pending_jobs)} items in queue")
 
-            # 处理队列中的每个 URL
             results = []
-            for item in queue:
-                url = item["url"]
-                job_id = item.get("job_id")
-                need_summary = True
-                tts_config = {}
+            for job_data in pending_jobs:
+                url = job_data["url"]
+                job_id = job_data.get("job_id")
+                need_summary = job_data.get("need_summary", True)
+                tts_config = job_data.get("tts_config", {})
+                queue_file = job_data.get("_queue_file")
 
-                # 尝试从 job 文件加载配置
                 if job_id:
                     try:
                         job_file = os.path.join(
@@ -283,9 +278,9 @@ class Worker:
                         )
                         if os.path.exists(job_file):
                             with open(job_file, "r", encoding="utf-8") as f:
-                                job_data = json.load(f)
-                                need_summary = job_data.get("need_summary", True)
-                                tts_config = job_data.get("tts_config", {})
+                                job_metadata = json.load(f)
+                                need_summary = job_metadata.get("need_summary", True)
+                                tts_config = job_metadata.get("tts_config", {})
                                 self._log(
                                     f"Loaded job {job_id}: need_summary={need_summary}, tts_config={list(tts_config.keys())}"
                                 )
@@ -295,16 +290,29 @@ class Worker:
                 result = self.process_url(url, need_summary, job_id, tts_config)
                 results.append(result)
 
-            # 清空队列
-            self._clear_queue()
+                if queue_file:
+                    self.job_queue.mark_processed(queue_file)
 
-            # 统计结果
             success_count = sum(1 for r in results if r["success"])
             fail_count = len(results) - success_count
 
             self._log(
                 f"Processing complete: {success_count} succeeded, {fail_count} failed"
             )
+
+            if success_count > 0:
+                try:
+                    from src.rss_generator import RSSGenerator
+                    from src.episode_metadata import get_metadata_manager
+
+                    metadata_manager = get_metadata_manager()
+                    episodes = metadata_manager.get_all_episodes()
+
+                    rss_gen = RSSGenerator(self.config._config)
+                    rss_gen.save_rss(episodes)
+                    self._log("RSS feed updated")
+                except Exception as e:
+                    self._log(f"Failed to update RSS feed: {e}", "WARNING")
 
             return results
 
