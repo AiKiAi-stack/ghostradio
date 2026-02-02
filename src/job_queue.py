@@ -38,6 +38,7 @@ class JobQueue:
         tts_config: Optional[Dict[str, Any]] = None,
         retry_count: int = 0,
         max_retries: int = 3,
+        user_id: str = "default",
     ) -> str:
         """Add a new job to the queue"""
         timestamp = datetime.now().isoformat()
@@ -46,6 +47,7 @@ class JobQueue:
         job_data = {
             "queue_id": queue_id,
             "job_id": job_id,
+            "user_id": user_id,
             "url": url,
             "llm_model": llm_model,
             "tts_model": tts_model,
@@ -129,6 +131,7 @@ class JobQueue:
             new_queue_id = self.add_job(
                 url=job_data["url"],
                 job_id=job_data["job_id"],
+                user_id=job_data.get("user_id", "default"),
                 llm_model=job_data.get("llm_model", "nvidia"),
                 tts_model=job_data.get("tts_model", "volcengine"),
                 need_summary=job_data.get("need_summary", True),

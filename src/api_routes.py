@@ -1,12 +1,6 @@
 """
 API 路由模块
 提供前端交互所需的 REST API
-
-改进：
-- 添加详细的日志记录
-- 支持任务取消
-- 添加超时检测
-- 更细粒度的进度更新
 """
 
 import json
@@ -21,6 +15,8 @@ from pathlib import Path
 from src.job_models import JobStatus, Job
 from src.logger import get_logger
 from src.job_queue import JobQueue
+from src.episode_metadata import get_metadata_manager, EpisodeMetadataManager
+from src.qrcode_utils import generate_feed_qr_payload
 
 logger = get_logger("api")
 job_queue = JobQueue()
@@ -31,9 +27,9 @@ class JobManager:
 
     # 超时配置（秒）
     STAGE_TIMEOUTS = {
-        "fetching": 60,  # 获取内容最多60秒
-        "llm_processing": 300,  # LLM处理最多5分钟
-        "tts_generating": 600,  # TTS生成最多10分钟
+        "fetching": 60,
+        "llm_processing": 300,
+        "tts_generating": 600,
     }
 
     def __init__(self, jobs_dir: str = "logs/jobs"):
@@ -41,8 +37,6 @@ class JobManager:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self._jobs: Dict[str, Job] = {}
         self._lock = threading.Lock()
-
-        # 加载现有任务
         self._load_existing_jobs()
 
     def _load_existing_jobs(self) -> None:
@@ -51,8 +45,7 @@ class JobManager:
             for job_file in self.jobs_dir.glob("*.json"):
                 try:
                     with open(job_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        # 延迟加载，只在需要时通过 get_job 加载
+                        json.load(f)
                 except Exception as e:
                     logger.warning(f"Failed to load job file {job_file}: {e}")
         except Exception as e:
@@ -65,19 +58,27 @@ class JobManager:
         tts_model: str,
         need_summary: bool = True,
         tts_config: Optional[Dict[str, Any]] = None,
+        user_id: str = "default",
     ) -> Job:
         """创建新任务"""
         with self._lock:
             job_id = str(uuid.uuid4())[:8]
-            job = Job(job_id, url, llm_model, tts_model, need_summary, tts_config)
+            job = Job(
+                job_id,
+                url,
+                llm_model,
+                tts_model,
+                need_summary,
+                tts_config,
+                user_id=user_id,
+            )
             self._jobs[job_id] = job
             self._save_job(job)
-
             logger.log_job_start(job_id, url, llm_model, tts_model, need_summary)
             return job
 
     def get_job(self, job_id: str) -> Optional[Job]:
-        """获取任务，总是尝试从磁盘重新加载以同步 worker 进度"""
+        """获取任务"""
         with self._lock:
             job_file = self.jobs_dir / f"{job_id}.json"
             if job_file.exists():
@@ -89,8 +90,6 @@ class JobManager:
                         return job
                 except Exception as e:
                     logger.error(f"Failed to load job {job_id}: {e}")
-
-            # 如果文件不存在，但在内存中（虽然理论上不应该发生）
             return self._jobs.get(job_id)
 
     def update_job(self, job_id: str, **kwargs) -> None:
@@ -100,8 +99,6 @@ class JobManager:
             if job:
                 job.update(**kwargs)
                 self._save_job(job)
-
-                # 记录进度
                 if "progress" in kwargs or "stage" in kwargs:
                     logger.log_job_progress(
                         job_id,
@@ -142,7 +139,6 @@ class JobManager:
         with self._lock:
             job = self.get_job(job_id)
             if job:
-                # 只能取消正在进行的任务
                 if job.status in [
                     JobStatus.PENDING,
                     JobStatus.QUEUED,
@@ -158,25 +154,20 @@ class JobManager:
             return False
 
     def check_timeout(self, job_id: str) -> Optional[str]:
-        """检查任务是否超时，返回警告信息"""
+        """检查任务是否超时"""
         job = self.get_job(job_id)
         if not job:
             return None
-
         stage = job.stage
         if stage in self.STAGE_TIMEOUTS:
             elapsed = job.get_stage_elapsed_time()
             if elapsed:
                 timeout = self.STAGE_TIMEOUTS[stage]
                 if elapsed > timeout:
-                    warning = (
+                    logger.log_timeout(job_id, stage, elapsed, timeout)
+                    return (
                         f"阶段 '{stage}' 已运行 {elapsed:.0f} 秒，超过预期 {timeout} 秒"
                     )
-                    logger.log_timeout(job_id, stage, elapsed, timeout)
-                    return warning
-                elif elapsed > timeout * 0.8:  # 80% 阈值
-                    return f"阶段 '{stage}' 即将超时 ({elapsed:.0f}/{timeout} 秒)"
-
         return None
 
     def _save_job(self, job: Job) -> None:
@@ -190,23 +181,20 @@ class JobManager:
 
     def get_all_jobs(self) -> List[Job]:
         """获取所有任务"""
-        # 同步所有磁盘上的任务
         all_jobs = []
         for job_file in self.jobs_dir.glob("*.json"):
-            job_id = job_file.stem
-            job = self.get_job(job_id)
+            job = self.get_job(job_file.stem)
             if job:
                 all_jobs.append(job)
         return all_jobs
 
 
-# 全局任务管理器
 _job_manager: Optional[JobManager] = None
 _job_manager_lock = threading.Lock()
 
 
 def get_job_manager() -> JobManager:
-    """获取任务管理器实例（线程安全）"""
+    """获取任务管理器实例"""
     global _job_manager
     with _job_manager_lock:
         if _job_manager is None:
@@ -215,60 +203,46 @@ def get_job_manager() -> JobManager:
 
 
 def handle_api_request(handler, path: str, method: str) -> tuple:
-    """
-    处理 API 请求
-
-    Returns:
-        (status_code, response_data, content_type)
-    """
+    """处理 API 请求"""
     job_manager = get_job_manager()
     start_time = time.time()
-
     try:
-        # POST /api/generate - 创建生成任务
-        if path == "/api/generate" and method == "POST":
+        if path.startswith("/api/generate") and method == "POST":
             result = handle_generate(handler, job_manager)
-
-        # GET /api/progress/{job_id} - 获取任务进度
         elif path.startswith("/api/progress/") and method == "GET":
             job_id = path.split("/")[-1]
             result = handle_progress(job_id, job_manager)
-
-        # POST /api/cancel/{job_id} - 取消任务
         elif path.startswith("/api/cancel/") and method == "POST":
             job_id = path.split("/")[-1]
             result = handle_cancel(job_id, job_manager)
+        elif path.startswith("/api/episodes") and method == "GET":
+            user_id = "default"
+            if "?" in path:
+                from urllib.parse import urlparse, parse_qs
 
-        # GET /api/episodes - 获取节目列表
-        elif path == "/api/episodes" and method == "GET":
-            result = handle_episodes()
+                query = parse_qs(urlparse(path).query)
+                user_id = query.get("user_id", ["default"])[0]
+            result = handle_episodes(user_id)
+        elif path.startswith("/api/qrcode") and method == "GET":
+            from urllib.parse import urlparse, parse_qs
 
-        # GET /health - 基础健康检查
+            query = parse_qs(urlparse(path).query)
+            user_id = query.get("user_id", ["default"])[0]
+            result = handle_qrcode(user_id, handler)
         elif path == "/health" and method == "GET":
             result = handle_health()
-
-        # GET /health/worker - Worker状态
         elif path == "/health/worker" and method == "GET":
             result = handle_health_worker()
-
-        # GET /health/system - 系统资源状态
         elif path == "/health/system" and method == "GET":
             result = handle_health_system()
-
-        # GET /health/full - 完整健康状态
         elif path == "/health/full" and method == "GET":
             result = handle_health_full()
-
         else:
             result = (404, {"error": "Not found"}, "application/json")
-
-        # 记录API请求（排除频繁的进度查询）
         if not path.startswith("/api/progress/"):
             duration_ms = (time.time() - start_time) * 1000
             logger.log_api_request(method, path, result[0], duration_ms)
-
         return result
-
     except Exception as e:
         logger.error(f"API request failed: {method} {path}", error=e)
         return 500, {"error": str(e)}, "application/json"
@@ -280,11 +254,10 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
         content_length = int(handler.headers.get("Content-Length", 0))
         if content_length == 0:
             return 400, {"error": "Empty request body"}, "application/json"
-
         post_data = handler.rfile.read(content_length).decode("utf-8")
         data = json.loads(post_data)
-
         url = data.get("url", "").strip()
+        user_id = data.get("user_id", "default").strip()
         prompt_text = data.get("prompt_text", "").strip()
         nlp_texts = data.get("nlp_texts")
         llm_model = data.get("llm_model", "nvidia")
@@ -292,20 +265,10 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
         need_summary = data.get("need_summary", True)
         tts_config = data.get("tts_config", {})
 
-        # 注入额外的文本输入到 tts_config 供 Provider 使用
-        if prompt_text:
-            tts_config["prompt_text"] = prompt_text
-        if nlp_texts:
-            tts_config["nlp_texts"] = nlp_texts
+        metadata_manager = get_metadata_manager(user_id)
+        if len(metadata_manager.get_all_episodes()) >= 10:
+            logger.info(f"User {user_id} reached limit. Oldest will be removed.")
 
-        if not url and not prompt_text and not nlp_texts:
-            return (
-                400,
-                {"error": "Input (URL, prompt or script) is required"},
-                "application/json",
-            )
-
-        # 记录完整的请求信息（脱敏处理）
         safe_tts_config = tts_config.copy()
         if "appid" in safe_tts_config:
             safe_tts_config["appid"] = "********"
@@ -316,48 +279,33 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
             "API generate request received",
             context={
                 "url": url,
+                "user_id": user_id,
                 "prompt_text": prompt_text,
-                "has_nlp": nlp_texts is not None,
                 "llm_model": llm_model,
                 "tts_model": tts_model,
-                "tts_config": safe_tts_config,
-                "need_summary": need_summary,
-                "request_data": {k: v for k, v in data.items() if k != "tts_config"},
             },
         )
-
-        # 创建任务
         job = job_manager.create_job(
-            url or "manual_input", llm_model, tts_model, need_summary, tts_config
+            url or "manual_input",
+            llm_model,
+            tts_model,
+            need_summary,
+            tts_config,
+            user_id=user_id,
         )
-
         job_queue.add_job(
             url=url or "manual_input",
             job_id=job.id,
+            user_id=user_id,
             llm_model=llm_model,
             tts_model=tts_model,
             need_summary=need_summary,
             tts_config=tts_config,
         )
-
         job_manager.update_job(
             job.id, status=JobStatus.QUEUED, progress=5, message="已加入处理队列"
         )
-
-        return (
-            200,
-            {
-                "success": True,
-                "job_id": job.id,
-                "message": "Task created successfully",
-                "status": job.status,
-                "progress": job.progress,
-            },
-            "application/json",
-        )
-
-    except json.JSONDecodeError:
-        return 400, {"error": "Invalid JSON"}, "application/json"
+        return (200, {"success": True, "job_id": job.id}, "application/json")
     except Exception as e:
         logger.error("Failed to create job", error=e)
         return 500, {"error": str(e)}, "application/json"
@@ -366,13 +314,9 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
 def handle_progress(job_id: str, job_manager: JobManager) -> tuple:
     """处理进度查询请求"""
     job = job_manager.get_job(job_id)
-
     if not job:
         return 404, {"error": "Job not found"}, "application/json"
-
-    # 检查超时
     timeout_warning = job_manager.check_timeout(job_id)
-
     response = {
         "job_id": job_id,
         "status": job.status,
@@ -382,79 +326,75 @@ def handle_progress(job_id: str, job_manager: JobManager) -> tuple:
         "elapsed_time": job.get_elapsed_time(),
         "result": job.result,
         "error": job.error,
-        "error_details": job.error_details,
         "cancelled": job.cancelled,
     }
-
     if timeout_warning:
         response["timeout_warning"] = timeout_warning
-
     return 200, response, "application/json"
 
 
 def handle_cancel(job_id: str, job_manager: JobManager) -> tuple:
     """处理取消任务请求"""
     success = job_manager.cancel_job(job_id)
-
     if success:
-        return (
-            200,
-            {
-                "success": True,
-                "message": "Job cancelled successfully",
-                "job_id": job_id,
-            },
-            "application/json",
-        )
+        return (200, {"success": True, "job_id": job_id}, "application/json")
     else:
         job = job_manager.get_job(job_id)
         if not job:
             return 404, {"error": "Job not found"}, "application/json"
-        else:
-            return (
-                400,
-                {
-                    "error": "Cannot cancel job",
-                    "status": job.status,
-                    "message": f"当前状态为 '{job.status}'，无法取消",
-                },
-                "application/json",
-            )
+        return (
+            400,
+            {"error": "Cannot cancel", "status": job.status},
+            "application/json",
+        )
 
 
-def handle_episodes() -> tuple:
+def handle_episodes(user_id: str = "default") -> tuple:
     """处理节目列表请求"""
     try:
-        from src.episode_metadata import get_metadata_manager, EpisodeMetadataManager
-
-        metadata_manager = get_metadata_manager()
-
-        EpisodeMetadataManager.migrate_from_filesystem()
-
+        metadata_manager = get_metadata_manager(user_id)
+        EpisodeMetadataManager.migrate_from_filesystem(user_id=user_id)
         episodes = metadata_manager.get_all_episodes()
-
-        formatted_episodes = []
+        formatted = []
         for ep in episodes:
-            formatted_episodes.append(
+            formatted.append(
                 {
                     "id": ep["id"],
-                    "title": ep.get("title", ep["id"].replace("_", " ").title()),
-                    "audio_file": f"episodes/{ep['audio_file']}",
+                    "title": ep.get("title", ep["id"]),
+                    "audio_file": f"episodes/{user_id}/{ep['audio_file']}",
                     "created": ep.get("created_at", ""),
                     "size_mb": ep.get("size_mb", 0),
                     "duration": ep.get("duration_seconds", 0),
                 }
             )
-
-        return 200, formatted_episodes, "application/json"
-
+        return 200, formatted, "application/json"
     except Exception as e:
-        logger.error("Failed to load episodes from metadata", error=e)
+        logger.error(f"Failed to load episodes for {user_id}", error=e)
+        return 500, {"error": str(e)}, "application/json"
+
+
+def handle_qrcode(user_id: str, handler) -> tuple:
+    """处理二维码生成请求"""
+    try:
+        from src.config import get_config
+
+        config = get_config()
+        host = handler.headers.get(
+            "Host", f"localhost:{config.get('server.port', 8080)}"
+        )
+        protocol = (
+            "https" if handler.headers.get("X-Forwarded-Proto") == "https" else "http"
+        )
+        base_url = f"{protocol}://{host}"
+        rss_url = f"{base_url}/episodes/{user_id}/feed.xml"
+        payload = generate_feed_qr_payload(rss_url)
+        return 200, payload, "application/json"
+    except Exception as e:
+        logger.error(f"Failed to generate QR for {user_id}", error=e)
         return 500, {"error": str(e)}, "application/json"
 
 
 def handle_health() -> tuple:
-    """Basic health check"""
     return (
         200,
         {"status": "ok", "timestamp": datetime.now().isoformat()},
@@ -463,74 +403,52 @@ def handle_health() -> tuple:
 
 
 def handle_health_worker() -> tuple:
-    """Worker health status"""
     try:
         from src.health_checker import get_health_checker
         from src.config import get_config
 
         config = get_config()
         health_checker = get_health_checker(config._config)
-
-        worker_status = health_checker.get_worker_status()
-        queue_status = health_checker.get_queue_status()
-
         return (
             200,
             {
                 "status": "ok",
-                "timestamp": datetime.now().isoformat(),
-                "worker": worker_status,
-                "queue": queue_status,
+                "worker": health_checker.get_worker_status(),
+                "queue": health_checker.get_queue_status(),
             },
             "application/json",
         )
-
     except Exception as e:
-        logger.error("Failed to get worker health", error=e)
         return 500, {"error": str(e)}, "application/json"
 
 
 def handle_health_system() -> tuple:
-    """System resource health"""
     try:
         from src.health_checker import get_health_checker
         from src.config import get_config
 
         config = get_config()
         health_checker = get_health_checker(config._config)
-
-        system_status = health_checker.get_system_resources()
-        episodes_status = health_checker.get_episodes_status()
-
         return (
             200,
             {
                 "status": "ok",
-                "timestamp": datetime.now().isoformat(),
-                "system": system_status,
-                "episodes": episodes_status,
+                "system": health_checker.get_system_resources(),
+                "episodes": health_checker.get_episodes_status(),
             },
             "application/json",
         )
-
     except Exception as e:
-        logger.error("Failed to get system health", error=e)
         return 500, {"error": str(e)}, "application/json"
 
 
 def handle_health_full() -> tuple:
-    """Complete health status"""
     try:
         from src.health_checker import get_health_checker
         from src.config import get_config
 
         config = get_config()
         health_checker = get_health_checker(config._config)
-
-        full_health = health_checker.get_full_health()
-
-        return 200, full_health, "application/json"
-
+        return 200, health_checker.get_full_health(), "application/json"
     except Exception as e:
-        logger.error("Failed to get full health", error=e)
         return 500, {"error": str(e)}, "application/json"

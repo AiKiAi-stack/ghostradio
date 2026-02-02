@@ -27,3 +27,7 @@ psutil>=5.9.0
 
 # Audio metadata extraction
 mutagen>=1.47.0
+
+# QR code generation for mobile access
+qrcode>=7.4.2
+pillow>=10.0.0

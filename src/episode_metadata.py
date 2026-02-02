@@ -14,9 +14,13 @@ from src.audio_utils import get_audio_duration
 class EpisodeMetadataManager:
     """Manages episode metadata in a centralized JSON file"""
 
-    def __init__(self, metadata_file: str = "episodes/metadata.json"):
-        self.metadata_file = Path(metadata_file)
-        self.metadata_file.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, user_id: str = "default", base_dir: str = "episodes"):
+        self.user_id = user_id
+        self.base_dir = Path(base_dir)
+        self.user_dir = self.base_dir / user_id
+        self.metadata_file = self.user_dir / "metadata.json"
+
+        self.user_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_metadata_file()
 
     def _ensure_metadata_file(self):
@@ -35,7 +39,7 @@ class EpisodeMetadataManager:
         with open(self.metadata_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def add_episode(self, episode_data: Dict[str, Any]) -> bool:
+    def add_episode(self, episode_data: Dict[str, Any], limit: int = 10) -> bool:
         try:
             metadata = self._load_metadata()
 
@@ -48,6 +52,19 @@ class EpisodeMetadataManager:
                     metadata["episodes"][i] = episode_data
                     self._save_metadata(metadata)
                     return True
+
+            if len(metadata["episodes"]) >= limit:
+                removed_ep = metadata["episodes"].pop()
+                try:
+                    audio_file = self.user_dir / removed_ep.get("audio_file", "")
+                    if audio_file.exists():
+                        audio_file.unlink()
+
+                    script_file = self.user_dir / f"{removed_ep['id']}.txt"
+                    if script_file.exists():
+                        script_file.unlink()
+                except Exception as e:
+                    print(f"Error during cleanup: {e}")
 
             metadata["episodes"].insert(0, episode_data)
             self._save_metadata(metadata)
@@ -100,9 +117,12 @@ class EpisodeMetadataManager:
             return False
 
     @classmethod
-    def migrate_from_filesystem(cls, episodes_dir: str = "episodes") -> int:
-        manager = cls()
+    def migrate_from_filesystem(
+        cls, episodes_dir: str = "episodes", user_id: str = "default"
+    ) -> int:
+        manager = cls(user_id=user_id, base_dir=episodes_dir)
         episodes_path = Path(episodes_dir)
+        user_path = episodes_path / user_id
 
         if not episodes_path.exists():
             return 0
@@ -119,14 +139,18 @@ class EpisodeMetadataManager:
             ):
                 continue
 
-            stat = audio_file.stat()
-            duration = get_audio_duration(str(audio_file))
+            dest_file = user_path / audio_file.name
+            if not dest_file.exists():
+                audio_file.rename(dest_file)
+
+            stat = dest_file.stat()
+            duration = get_audio_duration(str(dest_file))
 
             episode_data = {
                 "id": episode_id,
                 "title": episode_id.replace("_", " ").title(),
                 "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "audio_file": f"episodes/{audio_file.name}",
+                "audio_file": f"{dest_file.name}",
                 "size_bytes": stat.st_size,
                 "size_mb": round(stat.st_size / (1024 * 1024), 2),
                 "duration_seconds": duration,
@@ -139,16 +163,15 @@ class EpisodeMetadataManager:
                 migrated += 1
 
         if migrated > 0:
-            print(f"Migrated {migrated} episodes from filesystem")
+            print(f"Migrated {migrated} episodes for user {user_id}")
         return migrated
 
 
-_metadata_manager_instance: Optional[EpisodeMetadataManager] = None
+_metadata_managers: Dict[str, EpisodeMetadataManager] = {}
 
 
-def get_metadata_manager() -> EpisodeMetadataManager:
-    """Get singleton instance of metadata manager"""
-    global _metadata_manager_instance
-    if _metadata_manager_instance is None:
-        _metadata_manager_instance = EpisodeMetadataManager()
-    return _metadata_manager_instance
+def get_metadata_manager(user_id: str = "default") -> EpisodeMetadataManager:
+    """Get instance of metadata manager for a specific user"""
+    if user_id not in _metadata_managers:
+        _metadata_managers[user_id] = EpisodeMetadataManager(user_id=user_id)
+    return _metadata_managers[user_id]

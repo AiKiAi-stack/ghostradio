@@ -251,12 +251,21 @@
 
             <!-- Recent Episodes Gallery -->
             <div class="pb-10">
-                <div class="flex justify-between items-end mb-6">
+            <div class="flex justify-between items-end mb-6">
+                <div>
                     <h3 class="text-xl font-bold text-white">Recent Hauntings</h3>
-                    <button onclick="loadEpisodes()" class="text-sm text-primary hover:text-white transition-colors flex items-center gap-1">
+                    <p class="text-xs text-[#6b7b8a] mt-1">Each user is limited to 10 episodes (FIFO).</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="showSubscribeQR()" class="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary hover:text-white transition-all flex items-center gap-1">
+                        Subscribe <span class="material-symbols-outlined text-sm">qr_code_2</span>
+                    </button>
+                    <button onclick="loadEpisodes()" class="text-sm text-[#9babbb] hover:text-white transition-colors flex items-center gap-1">
                         Refresh <span class="material-symbols-outlined text-sm">refresh</span>
                     </button>
                 </div>
+            </div>
+
                 <div id="episodeGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <!-- Cards will be injected here -->
                 </div>
@@ -273,6 +282,10 @@
                 <button onclick="toggleModal('settingsModal')" class="material-symbols-outlined hover:text-red-400">close</button>
             </div>
             <div class="p-6 flex flex-col gap-5">
+                <div class="space-y-2">
+                    <label class="text-xs uppercase font-bold text-[#6b7b8a]">User ID (for Isolation)</label>
+                    <input type="text" id="userId" placeholder="operator" class="w-full bg-[#0d141c] border border-white/10 rounded-xl px-4 py-3 focus:ring-primary text-sm"/>
+                </div>
                 <div class="space-y-2">
                     <label class="text-xs uppercase font-bold text-[#6b7b8a]">Volcengine AppID</label>
                     <input type="password" id="vcAppId" placeholder="Enter your AppID" class="w-full bg-[#0d141c] border border-white/10 rounded-xl px-4 py-3 focus:ring-primary text-sm"/>
@@ -304,6 +317,28 @@
                     <button onclick="toggleModal('errorModal')" class="flex-1 px-4 py-2 rounded-xl text-sm font-medium text-[#9babbb] hover:text-white transition-colors">CANCEL</button>
                     <button onclick="closeErrorAndOpenSettings()" class="flex-1 bg-red-500 py-2 rounded-xl font-bold text-white shadow-lg shadow-red-500/20 hover:bg-red-600 transition-all text-sm uppercase">OPEN SETTINGS</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="qrModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+        <div class="absolute inset-0 modal-backdrop" onclick="toggleModal('qrModal')"></div>
+        <div class="glass-panel w-full max-w-sm rounded-2xl relative overflow-hidden shadow-2xl">
+            <div class="p-6 border-b border-white/10 bg-white/5 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Scan to Subscribe</h3>
+                <button onclick="toggleModal('qrModal')" class="material-symbols-outlined hover:text-red-400">close</button>
+            </div>
+            <div class="p-8 flex flex-col items-center gap-6">
+                <div id="qrcode" class="bg-white p-4 rounded-xl shadow-lg">
+                </div>
+                <div class="text-center space-y-2">
+                    <p class="text-sm text-white font-medium">Add to your Podcast App</p>
+                    <p class="text-xs text-[#9babbb]">Scan with your iPhone camera to open in Apple Podcasts or any RSS-ready app.</p>
+                </div>
+                <a id="applePodcastsLink" href="#" class="w-full bg-[#0d141c] border border-white/10 py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-lg">podcasts</span>
+                    Open in Apple Podcasts
+                </a>
             </div>
         </div>
     </div>
@@ -388,37 +423,38 @@
 
         function clearTerminal() { document.getElementById('terminal').innerHTML = ''; }
 
-        // Simple Obfuscation for transit
-        const crypt = {
-            enc: (str) => btoa(unescape(encodeURIComponent(str))),
-            dec: (str) => decodeURIComponent(escape(atob(str)))
-        };
-
         // Settings Logic
         function saveSettings() {
+            localStorage.setItem('gr_user_id', document.getElementById('userId').value || 'operator');
             localStorage.setItem('gr_vc_appid', document.getElementById('vcAppId').value);
             localStorage.setItem('gr_vc_token', document.getElementById('vcToken').value);
             localStorage.setItem('gr_gen_key', document.getElementById('genKey').value);
             log("Credentials updated successfully.", "success");
             toggleModal('settingsModal');
+            loadEpisodes(); // Reload to show user-specific episodes
         }
 
         function loadSettings() {
+            document.getElementById('userId').value = localStorage.getItem('gr_user_id') || 'operator';
             document.getElementById('vcAppId').value = localStorage.getItem('gr_vc_appid') || '';
             document.getElementById('vcToken').value = localStorage.getItem('gr_vc_token') || '';
             document.getElementById('genKey').value = localStorage.getItem('gr_gen_key') || '';
         }
+
+        const crypt = {
+            enc: (str) => btoa(unescape(encodeURIComponent(str))),
+            dec: (str) => decodeURIComponent(escape(atob(str)))
+        };
 
         // API Interaction
         async function generate() {
             const input = document.getElementById('mainInput').value;
             if(!input) return log("Please provide an input.", "error");
 
-            // Obfuscate sensitive tokens for transit
+            const userId = localStorage.getItem('gr_user_id') || 'operator';
             const rawAppId = localStorage.getItem('gr_vc_appid');
             const rawToken = localStorage.getItem('gr_vc_token');
             
-            // Check for missing credentials
             if (!rawAppId || !rawToken) {
                 log("Missing Volcengine credentials. Aborting.", "error");
                 toggleModal('errorModal');
@@ -427,10 +463,9 @@
             
             const tts_config = {
                 provider: "volcengine",
-                // Send as obfuscated strings
                 appid: crypt.enc(rawAppId || ""),
                 token: crypt.enc(rawToken || ""),
-                is_encoded: true, // Tell backend to decode
+                is_encoded: true,
                 action: currentMode,
                 use_head_music: document.getElementById('useHeadMusic').checked,
                 use_tail_music: document.getElementById('useTailMusic').checked,
@@ -442,13 +477,14 @@
                 speakers: selectedSpeakers
             };
 
-            log(`Summoning task in mode ${currentMode}...`);
+            log(`Summoning task for ${userId}...`);
             
             try {
                 const res = await fetch('/api/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        user_id: userId,
                         url: currentMode === 0 ? input : "",
                         prompt_text: currentMode === 4 ? input : "",
                         nlp_texts: currentMode === 3 ? JSON.parse(input) : null,
@@ -486,7 +522,8 @@
         }
 
         async function loadEpisodes() {
-            const res = await fetch('/api/episodes');
+            const userId = localStorage.getItem('gr_user_id') || 'operator';
+            const res = await fetch(`/api/episodes?user_id=${userId}`);
             const data = await res.json();
             const grid = document.getElementById('episodeGrid');
             grid.innerHTML = data.map(ep => `
@@ -507,6 +544,28 @@
                     </div>
                 </div>
             `).join('');
+        }
+
+        async function showSubscribeQR() {
+            const userId = localStorage.getItem('gr_user_id') || 'operator';
+            try {
+                const res = await fetch(`/api/qrcode?user_id=${userId}`);
+                const data = await res.json();
+                
+                if (data.qr_code) {
+                    const qrContainer = document.getElementById('qrcode');
+                    qrContainer.innerHTML = `<img src="${data.qr_code}" class="w-48 h-48" alt="RSS QR Code">`;
+                    
+                    const appleLink = document.getElementById('applePodcastsLink');
+                    appleLink.href = data.apple_podcasts_url;
+                    
+                    toggleModal('qrModal');
+                } else {
+                    log("Failed to generate QR code.", "error");
+                }
+            } catch (e) {
+                log("Error fetching QR code: " + e.message, "error");
+            }
         }
 
         window.onload = () => {

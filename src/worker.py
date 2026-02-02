@@ -127,18 +127,17 @@ class Worker:
         need_summary: bool = True,
         job_id: Optional[str] = None,
         tts_config: Optional[dict] = None,
+        user_id: str = "default",
     ) -> dict:
-        """处理单个 URL
-
-        Args:
-            url: 目标 URL
-            need_summary: 是否需要 LLM 总结
-            job_id: 任务 ID
-            tts_config: TTS 特定配置
-        """
+        """处理单个 URL"""
         episode_id = self._generate_episode_id()
         start_time = time.time()
-        self._log(f"Processing URL: {url}")
+
+        user_dir = os.path.join(self.paths["episodes_dir"], user_id)
+        os.makedirs(user_dir, exist_ok=True)
+
+        self._log(f"Processing URL for user {user_id}: {url}")
+
         self._log(
             f"Mode: {'With LLM summary' if need_summary else 'Direct URL (no summary)'}"
         )
@@ -216,7 +215,7 @@ class Worker:
                     )
 
             # 保存脚本
-            script_path = os.path.join(self.paths["episodes_dir"], f"{episode_id}.txt")
+            script_path = os.path.join(user_dir, f"{episode_id}.txt")
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(f"Title: {title}\n")
                 f.write(f"Source: {url}\n")
@@ -239,9 +238,7 @@ class Worker:
             tts_start = time.time()
             self._log("Step 3: Generating audio...")
             audio_format = self.resources["audio_format"]
-            audio_path = os.path.join(
-                self.paths["episodes_dir"], f"{episode_id}.{audio_format}"
-            )
+            audio_path = os.path.join(user_dir, f"{episode_id}.{audio_format}")
 
             # 传递 tts_config
             tts_params = tts_config or {}
@@ -274,7 +271,7 @@ class Worker:
                 )
 
             try:
-                metadata_manager = get_metadata_manager()
+                metadata_manager = get_metadata_manager(user_id)
                 audio_size_bytes = os.path.getsize(audio_path)
 
                 episode_metadata = {
@@ -298,8 +295,8 @@ class Worker:
                         "total_seconds": round(total_duration, 2),
                     },
                 }
-                metadata_manager.add_episode(episode_metadata)
-                self._log(f"Metadata saved for episode {episode_id}")
+                metadata_manager.add_episode(episode_metadata, limit=10)
+                self._log(f"Metadata saved for user {user_id}, episode {episode_id}")
             except Exception as e:
                 self._log(f"Failed to save metadata: {e}", "WARNING")
 
@@ -367,12 +364,17 @@ class Worker:
             self._log(f"Found {len(pending_jobs)} items in queue")
 
             results = []
+            users_processed = set()
+
             for job_data in pending_jobs:
                 url = job_data["url"]
                 job_id = job_data.get("job_id")
+                user_id = job_data.get("user_id", "default")
                 need_summary = job_data.get("need_summary", True)
                 tts_config = job_data.get("tts_config", {})
                 queue_file = job_data.get("_queue_file")
+
+                users_processed.add(user_id)
 
                 if job_id:
                     try:
@@ -385,12 +387,14 @@ class Worker:
                                 need_summary = job_metadata.get("need_summary", True)
                                 tts_config = job_metadata.get("tts_config", {})
                                 self._log(
-                                    f"Loaded job {job_id}: need_summary={need_summary}, tts_config={list(tts_config.keys())}"
+                                    f"Loaded job {job_id}: user={user_id}, need_summary={need_summary}, tts_config={list(tts_config.keys())}"
                                 )
                     except Exception as e:
                         self._log(f"Failed to load job {job_id}: {e}", "WARNING")
 
-                result = self.process_url(url, need_summary, job_id, tts_config)
+                result = self.process_url(
+                    url, need_summary, job_id, tts_config, user_id=user_id
+                )
                 results.append(result)
 
                 if queue_file:
@@ -430,12 +434,21 @@ class Worker:
                     from src.rss_generator import RSSGenerator
                     from src.episode_metadata import get_metadata_manager
 
-                    metadata_manager = get_metadata_manager()
-                    episodes = metadata_manager.get_all_episodes()
+                    for user_id in users_processed:
+                        metadata_manager = get_metadata_manager(user_id)
+                        episodes = metadata_manager.get_all_episodes()
 
-                    rss_gen = RSSGenerator(self.config._config)
-                    rss_gen.save_rss(episodes)
-                    self._log("RSS feed updated")
+                        user_config = self.config._config.copy()
+                        user_rss_file = os.path.join(
+                            self.paths["episodes_dir"], user_id, "feed.xml"
+                        )
+                        user_config["paths"]["rss_file"] = user_rss_file
+
+                        rss_gen = RSSGenerator(user_config, user_id=user_id)
+                        rss_gen.save_rss(episodes)
+                        self._log(
+                            f"RSS feed updated for user {user_id} at {user_rss_file}"
+                        )
                 except Exception as e:
                     self._log(f"Failed to update RSS feed: {e}", "WARNING")
 

@@ -34,8 +34,10 @@ class Job:
         tts_model: str,
         need_summary: bool = True,
         tts_config: Optional[Dict[str, Any]] = None,
+        user_id: str = "default",
     ):
         self.id = job_id
+        self.user_id = user_id
         self.url = url
         self.llm_model = llm_model
         self.tts_model = tts_model
@@ -60,6 +62,7 @@ class Job:
         """从字典创建对象"""
         job = cls(
             job_id=data["id"],
+            user_id=data.get("user_id", "default"),
             url=data["url"],
             llm_model=data.get("llm_model", "nvidia"),
             tts_model=data.get("tts_model", "volcengine"),
@@ -89,6 +92,7 @@ class Job:
         """转换为字典"""
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "url": self.url,
             "llm_model": self.llm_model,
             "tts_model": self.tts_model,
