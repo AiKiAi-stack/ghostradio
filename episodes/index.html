@@ -134,10 +134,14 @@
                                 <span id="inputIcon" class="material-symbols-outlined text-xl">link</span>
                             </div>
                             <input id="mainInput" class="w-full bg-transparent border-none text-white placeholder-[#475569] focus:ring-0 px-4 py-4 text-lg font-light h-16" placeholder="https://medium.com/article..." type="text"/>
-                            <div class="pr-2">
-                                <button onclick="generate()" class="bg-primary hover:bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold tracking-wide shadow-neon transition-all flex items-center gap-2">
+                            <div class="pr-2 flex gap-2">
+                                <button id="cancelBtn" onclick="cancelPendingJob()" class="hidden bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-lg font-bold tracking-wide transition-all flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-lg">close</span>
+                                    <span id="cancelBtnText">CANCEL</span>
+                                </button>
+                                <button id="generateBtn" onclick="generate()" class="bg-primary hover:bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold tracking-wide shadow-neon transition-all flex items-center gap-2">
                                     <span class="material-symbols-outlined text-lg">bolt</span>
-                                    <span>GENERATE</span>
+                                    <span id="generateBtnText">GENERATE</span>
                                 </button>
                             </div>
                         </div>
@@ -346,6 +350,10 @@
     <script>
         let currentMode = 0;
         let selectedSpeakers = [];
+        let pendingJobTimeout = null;
+        let countdownInterval = null;
+        let currentJobId = null;
+        let trackingInterval = null;
 
         // UI Helpers
         function toggleModal(id) {
@@ -446,7 +454,58 @@
             dec: (str) => decodeURIComponent(escape(atob(str)))
         };
 
-        // API Interaction
+        function cancelPendingJob() {
+            if (pendingJobTimeout) {
+                clearTimeout(pendingJobTimeout);
+                pendingJobTimeout = null;
+            }
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+            if (trackingInterval) {
+                clearInterval(trackingInterval);
+                trackingInterval = null;
+            }
+            if (currentJobId) {
+                fetch(`/api/cancel/${currentJobId}`, { method: 'POST' })
+                    .then(() => log("Job cancelled by user.", "error"))
+                    .catch(e => log(`Cancel failed: ${e.message}`, "error"));
+                currentJobId = null;
+            }
+            resetButtons();
+            log("Operation cancelled.", "error");
+        }
+
+        function resetButtons() {
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('generateBtnText').innerText = 'GENERATE';
+            document.getElementById('cancelBtn').classList.add('hidden');
+        }
+
+        function showCountdown(seconds) {
+            const genBtn = document.getElementById('generateBtn');
+            const genText = document.getElementById('generateBtnText');
+            const cancelBtn = document.getElementById('cancelBtn');
+            
+            genBtn.disabled = true;
+            cancelBtn.classList.remove('hidden');
+            
+            let remaining = seconds;
+            genText.innerText = `${remaining}s...`;
+            
+            countdownInterval = setInterval(() => {
+                remaining--;
+                if (remaining > 0) {
+                    genText.innerText = `${remaining}s...`;
+                } else {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    genText.innerText = 'SENDING...';
+                }
+            }, 1000);
+        }
+
         async function generate() {
             const input = document.getElementById('mainInput').value;
             if(!input) return log("Please provide an input.", "error");
@@ -477,50 +536,70 @@
                 speakers: selectedSpeakers
             };
 
-            log(`Summoning task for ${userId}...`);
+            const payload = {
+                user_id: userId,
+                url: currentMode === 0 ? input : "",
+                prompt_text: currentMode === 4 ? input : "",
+                nlp_texts: currentMode === 3 ? JSON.parse(input) : null,
+                tts_config: tts_config,
+                need_summary: currentMode === 0
+            };
+
+            log(`Preparing task... You have 3 seconds to cancel.`);
+            showCountdown(3);
             
-            try {
-                const res = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        user_id: userId,
-                        url: currentMode === 0 ? input : "",
-                        prompt_text: currentMode === 4 ? input : "",
-                        nlp_texts: currentMode === 3 ? JSON.parse(input) : null,
-                        tts_config: tts_config,
-                        need_summary: currentMode === 0
-                    })
-                });
-                const data = await res.json();
-                if(data.success) {
-                    log(`Job accepted: ${data.job_id}. Tracking progress...`, "success");
-                    trackJob(data.job_id);
-                } else {
-                    log(`Summon failed: ${data.error}`, "error");
+            pendingJobTimeout = setTimeout(async () => {
+                pendingJobTimeout = null;
+                try {
+                    log(`Summoning task for ${userId}...`);
+                    const res = await fetch('/api/generate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await res.json();
+                    if(data.success) {
+                        currentJobId = data.job_id;
+                        log(`Job accepted: ${data.job_id}. Tracking progress...`, "success");
+                        trackJob(data.job_id);
+                    } else {
+                        log(`Summon failed: ${data.error}`, "error");
+                        resetButtons();
+                    }
+                } catch (e) {
+                    log(`Ritual interrupted: ${e.message}`, "error");
+                    resetButtons();
                 }
-            } catch (e) {
-                log(`Ritual interrupted: ${e.message}`, "error");
-            }
+            }, 3000);
         }
 
         async function trackJob(id) {
             let lastProgress = -1;
             let lastStage = '';
-            const interval = setInterval(async () => {
-                const res = await fetch(`/api/progress/${id}`);
-                const data = await res.json();
-                if(data.status === 'completed') {
-                    log(`Generation complete! Episode is ready.`, "success");
-                    clearInterval(interval);
-                    loadEpisodes();
-                } else if (data.status === 'failed') {
-                    log(`Job failed: ${data.error}`, "error");
-                    clearInterval(interval);
-                } else if (data.progress !== lastProgress || data.stage !== lastStage) {
-                    lastProgress = data.progress;
-                    lastStage = data.stage;
-                    log(`${data.stage.toUpperCase()}: ${data.progress}% - ${data.message}`);
+            trackingInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/progress/${id}`);
+                    const data = await res.json();
+                    if(data.status === 'completed') {
+                        log(`Generation complete! Episode is ready.`, "success");
+                        clearInterval(trackingInterval);
+                        trackingInterval = null;
+                        currentJobId = null;
+                        resetButtons();
+                        loadEpisodes();
+                    } else if (data.status === 'failed' || data.status === 'cancelled') {
+                        log(`Job ${data.status}: ${data.error || 'Cancelled by user'}`, "error");
+                        clearInterval(trackingInterval);
+                        trackingInterval = null;
+                        currentJobId = null;
+                        resetButtons();
+                    } else if (data.progress !== lastProgress || data.stage !== lastStage) {
+                        lastProgress = data.progress;
+                        lastStage = data.stage;
+                        log(`${data.stage.toUpperCase()}: ${data.progress}% - ${data.message}`);
+                    }
+                } catch (e) {
+                    log(`Progress check failed: ${e.message}`, "error");
                 }
             }, 3000);
         }
