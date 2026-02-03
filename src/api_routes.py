@@ -36,7 +36,7 @@ class JobManager:
         self.jobs_dir = Path(jobs_dir)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self._jobs: Dict[str, Job] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock to allow reentrant locking
         self._load_existing_jobs()
 
     def _load_existing_jobs(self) -> None:

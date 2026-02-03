@@ -243,7 +243,7 @@
                         </div>
                         <button onclick="clearTerminal()" class="text-[10px] text-[#475569] hover:text-white transition-colors">CLEAR</button>
                     </div>
-                    <div id="terminal" class="flex-1 p-6 font-mono text-sm overflow-y-auto terminal-scroll min-h-[300px]">
+                    <div id="terminal" class="flex-1 p-6 font-mono text-sm overflow-y-auto terminal-scroll min-h-[300px] max-h-[400px]">
                         <p class="text-[#6b7b8a]"><span class="text-blue-400">[SYSTEM]</span> Ready to summon.</p>
                     </div>
                 </div>
@@ -505,6 +505,8 @@
         }
 
         async function trackJob(id) {
+            let lastProgress = -1;
+            let lastStage = '';
             const interval = setInterval(async () => {
                 const res = await fetch(`/api/progress/${id}`);
                 const data = await res.json();
@@ -515,7 +517,9 @@
                 } else if (data.status === 'failed') {
                     log(`Job failed: ${data.error}`, "error");
                     clearInterval(interval);
-                } else {
+                } else if (data.progress !== lastProgress || data.stage !== lastStage) {
+                    lastProgress = data.progress;
+                    lastStage = data.stage;
                     log(`${data.stage.toUpperCase()}: ${data.progress}% - ${data.message}`);
                 }
             }, 3000);
