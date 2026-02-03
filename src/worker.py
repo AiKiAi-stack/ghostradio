@@ -46,8 +46,11 @@ class Worker:
         self._fetcher = None
         self._llm = None
         self._tts = None
-        self._llm_config = self.config.get_llm_config()
-        self._tts_config = self.config.get_tts_config()
+
+        # 移除这些在初始化时可能触发 health_checker 的调用
+        # self._llm_config = self.config.get_llm_config()
+        # self._tts_config = self.config.get_tts_config()
+
         self.job_queue = JobQueue()
         self.status_updater = JobStatusUpdater(
             self.paths.get("logs_dir", "logs") + "/jobs"
@@ -65,13 +68,17 @@ class Worker:
     @property
     def llm(self):
         if self._llm is None:
-            self._llm = LLMProcessor(self._llm_config)
+            # 只有在真正需要时才调用 get_llm_config
+            config = self.config.get_llm_config()
+            self._llm = LLMProcessor(config)
         return self._llm
 
     @property
     def tts(self):
         if self._tts is None:
-            self._tts = TTSGenerator(self._tts_config)
+            # 只有在真正需要时才调用 get_tts_config
+            config = self.config.get_tts_config()
+            self._tts = TTSGenerator(config)
         return self._tts
 
     def _ensure_directories(self):
