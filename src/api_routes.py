@@ -49,15 +49,34 @@ def _trigger_worker_async():
             if result.returncode == 0:
                 logger.info("Worker completed successfully")
             else:
-                logger.error(f"Worker failed: {result.stderr[:500]}")
+                error_msg = result.stderr[:500] if result.stderr else "Unknown error"
+                logger.error(f"Worker failed: {error_msg}")
+                _mark_pending_jobs_failed(error_msg)
         except Exception as e:
             logger.error(f"Worker trigger error: {e}")
+            _mark_pending_jobs_failed(str(e))
         finally:
             with _worker_lock:
                 _worker_running = False
 
     thread = threading.Thread(target=run_worker, daemon=True)
     thread.start()
+
+
+def _mark_pending_jobs_failed(error: str):
+    """Worker 崩溃时标记所有待处理任务为失败"""
+    try:
+        job_manager = get_job_manager()
+        for job in job_manager.get_all_jobs():
+            if job.status in [
+                JobStatus.PENDING,
+                JobStatus.QUEUED,
+                JobStatus.PROCESSING,
+            ]:
+                job_manager.set_job_error(job.id, f"Worker crashed: {error[:200]}")
+                logger.info(f"Marked job {job.id} as failed due to worker crash")
+    except Exception as e:
+        logger.error(f"Failed to mark jobs as failed: {e}")
 
 
 class JobManager:

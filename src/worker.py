@@ -44,7 +44,8 @@ class Worker:
         self.podcast = self.config.get_podcast_config()
 
         self.fetcher = ContentFetcher()
-        self.llm = LLMProcessor(self.config.get_llm_config())
+        self._llm = None
+        self._llm_config = self.config.get_llm_config()
         self.tts = TTSGenerator(self.config.get_tts_config())
         self.job_queue = JobQueue()
         self.status_updater = JobStatusUpdater(
@@ -53,6 +54,12 @@ class Worker:
         self.webhook_manager = get_webhook_manager(self.config.get("notifications", {}))
 
         self._ensure_directories()
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            self._llm = LLMProcessor(self._llm_config)
+        return self._llm
 
     def _ensure_directories(self):
         """确保必要的目录存在"""
