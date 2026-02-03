@@ -43,10 +43,11 @@ class Worker:
         self.resources = self.config.get_resources_config()
         self.podcast = self.config.get_podcast_config()
 
-        self.fetcher = ContentFetcher()
+        self._fetcher = None
         self._llm = None
+        self._tts = None
         self._llm_config = self.config.get_llm_config()
-        self.tts = TTSGenerator(self.config.get_tts_config())
+        self._tts_config = self.config.get_tts_config()
         self.job_queue = JobQueue()
         self.status_updater = JobStatusUpdater(
             self.paths.get("logs_dir", "logs") + "/jobs"
@@ -56,10 +57,22 @@ class Worker:
         self._ensure_directories()
 
     @property
+    def fetcher(self):
+        if self._fetcher is None:
+            self._fetcher = ContentFetcher()
+        return self._fetcher
+
+    @property
     def llm(self):
         if self._llm is None:
             self._llm = LLMProcessor(self._llm_config)
         return self._llm
+
+    @property
+    def tts(self):
+        if self._tts is None:
+            self._tts = TTSGenerator(self._tts_config)
+        return self._tts
 
     def _ensure_directories(self):
         """确保必要的目录存在"""
@@ -135,6 +148,8 @@ class Worker:
         user_id: str = "default",
     ) -> dict:
         """直接调用火山引擎 TTS API，跳过 fetch 和 LLM"""
+        from src.tts_providers import create_tts_provider
+
         episode_id = self._generate_episode_id()
         start_time = time.time()
 
@@ -158,8 +173,17 @@ class Worker:
             audio_format = self.resources.get("audio_format", "mp3")
             audio_path = os.path.join(user_dir, f"{episode_id}.{audio_format}")
 
-            self._log(f"[{job_id}] Calling TTS provider...")
-            tts_result = self.tts.generate("", audio_path, **tts_config)
+            provider_config = {
+                "provider": tts_config.get("provider", "volcengine"),
+                **tts_config,
+            }
+            self._log(
+                f"[{job_id}] Creating TTS provider: {provider_config.get('provider')}"
+            )
+
+            tts_provider = create_tts_provider(provider_config)
+            self._log(f"[{job_id}] Calling TTS synthesize...")
+            tts_result = tts_provider.synthesize("", audio_path, **tts_config)
             tts_duration = time.time() - tts_start
 
             if not tts_result["success"]:
@@ -199,7 +223,7 @@ class Worker:
                     "tokens_used": {"llm": 0},
                     "providers_used": {
                         "llm": "none",
-                        "tts": self.tts.provider_info["name"],
+                        "tts": provider_config.get("provider", "volcengine"),
                     },
                     "performance": {
                         "fetch_seconds": 0,
