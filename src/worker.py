@@ -43,9 +43,14 @@ class Worker:
         self.resources = self.config.get_resources_config()
         self.podcast = self.config.get_podcast_config()
 
-        self.fetcher = ContentFetcher()
-        self.llm = LLMProcessor(self.config.get_llm_config())
-        self.tts = TTSGenerator(self.config.get_tts_config())
+        self._fetcher = None
+        self._llm = None
+        self._tts = None
+
+        # 移除这些在初始化时可能触发 health_checker 的调用
+        # self._llm_config = self.config.get_llm_config()
+        # self._tts_config = self.config.get_tts_config()
+
         self.job_queue = JobQueue()
         self.status_updater = JobStatusUpdater(
             self.paths.get("logs_dir", "logs") + "/jobs"
@@ -53,6 +58,28 @@ class Worker:
         self.webhook_manager = get_webhook_manager(self.config.get("notifications", {}))
 
         self._ensure_directories()
+
+    @property
+    def fetcher(self):
+        if self._fetcher is None:
+            self._fetcher = ContentFetcher()
+        return self._fetcher
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            # 只有在真正需要时才调用 get_llm_config
+            config = self.config.get_llm_config()
+            self._llm = LLMProcessor(config)
+        return self._llm
+
+    @property
+    def tts(self):
+        if self._tts is None:
+            # 只有在真正需要时才调用 get_tts_config
+            config = self.config.get_tts_config()
+            self._tts = TTSGenerator(config)
+        return self._tts
 
     def _ensure_directories(self):
         """确保必要的目录存在"""
@@ -120,6 +147,138 @@ class Worker:
                 f"Warning: Episodes directory size ({total_size_mb:.1f}MB) exceeds limit ({max_size_mb}MB)",
                 "WARNING",
             )
+
+    def process_direct_tts(
+        self,
+        job_id: Optional[str],
+        tts_config: dict,
+        user_id: str = "default",
+    ) -> dict:
+        """直接调用火山引擎 TTS API，跳过 fetch 和 LLM"""
+        from src.tts_providers import create_tts_provider
+
+        episode_id = self._generate_episode_id()
+        start_time = time.time()
+
+        user_dir = os.path.join(self.paths["episodes_dir"], user_id)
+        os.makedirs(user_dir, exist_ok=True)
+
+        self._log(f"[{job_id}] Direct TTS for user {user_id}")
+        self._log(f"[{job_id}] TTS Config keys: {list(tts_config.keys())}")
+
+        try:
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    status=JobStatus.PROCESSING,
+                    progress=20,
+                    message="正在合成语音...",
+                    stage="tts_generating",
+                )
+
+            tts_start = time.time()
+            audio_format = self.resources.get("audio_format", "mp3")
+            audio_path = os.path.join(user_dir, f"{episode_id}.{audio_format}")
+
+            provider_config = {
+                "provider": tts_config.get("provider", "volcengine"),
+                **tts_config,
+            }
+            self._log(
+                f"[{job_id}] Creating TTS provider: {provider_config.get('provider')}"
+            )
+
+            tts_provider = create_tts_provider(provider_config)
+            self._log(f"[{job_id}] Calling TTS synthesize...")
+            tts_result = tts_provider.synthesize("", audio_path, **tts_config)
+            tts_duration = time.time() - tts_start
+
+            if not tts_result["success"]:
+                error_msg = tts_result.get("error", "Unknown TTS error")
+                self._log(f"[{job_id}] TTS failed: {error_msg}", "ERROR")
+                raise Exception(f"TTS generation failed: {error_msg}")
+
+            self._log(f"[{job_id}] Audio generated: {audio_path}")
+
+            actual_duration = get_audio_duration(audio_path)
+            if actual_duration <= 0:
+                actual_duration = float(tts_result.get("duration", 0))
+
+            total_duration = time.time() - start_time
+
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    progress=90,
+                    message="正在保存节目信息...",
+                )
+
+            try:
+                metadata_manager = get_metadata_manager(user_id)
+                audio_size_bytes = os.path.getsize(audio_path)
+
+                title = f"Podcast_{episode_id}"
+                episode_metadata = {
+                    "id": episode_id,
+                    "title": title,
+                    "created_at": datetime.now().isoformat(),
+                    "audio_file": os.path.basename(audio_path),
+                    "size_bytes": audio_size_bytes,
+                    "size_mb": round(audio_size_bytes / (1024 * 1024), 2),
+                    "duration_seconds": actual_duration,
+                    "source_url": "direct_tts",
+                    "tokens_used": {"llm": 0},
+                    "providers_used": {
+                        "llm": "none",
+                        "tts": provider_config.get("provider", "volcengine"),
+                    },
+                    "performance": {
+                        "fetch_seconds": 0,
+                        "llm_seconds": 0,
+                        "tts_seconds": round(tts_duration, 2),
+                        "total_seconds": round(total_duration, 2),
+                    },
+                }
+                metadata_manager.add_episode(episode_metadata, limit=10)
+                self._log(f"[{job_id}] Metadata saved")
+            except Exception as e:
+                self._log(f"[{job_id}] Metadata save failed: {e}", "WARNING")
+
+            self._cleanup_old_episodes()
+
+            result_data = {
+                "success": True,
+                "episode_id": episode_id,
+                "audio_file": os.path.basename(audio_path),
+                "duration": actual_duration,
+            }
+
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    status=JobStatus.COMPLETED,
+                    progress=100,
+                    message="生成完成",
+                    result=result_data,
+                )
+                self.webhook_manager.send_notification("job_completed", result_data)
+
+            self._log(f"[{job_id}] Complete! Duration: {total_duration:.2f}s")
+            return result_data
+
+        except Exception as e:
+            self._log(f"[{job_id}] Error: {e}", "ERROR")
+            if job_id:
+                self.status_updater.update_job(
+                    job_id,
+                    status=JobStatus.FAILED,
+                    error=str(e),
+                    message=f"处理失败: {str(e)}",
+                )
+                self.webhook_manager.send_notification(
+                    "job_failed", {"job_id": job_id, "error": str(e)}
+                )
+            return {"success": False, "error": str(e)}
 
     def process_url(
         self,
@@ -376,6 +535,8 @@ class Worker:
 
                 users_processed.add(user_id)
 
+                is_direct_tts = url == "manual_input" or url.startswith("direct:")
+
                 if job_id:
                     try:
                         job_file = os.path.join(
@@ -387,14 +548,19 @@ class Worker:
                                 need_summary = job_metadata.get("need_summary", True)
                                 tts_config = job_metadata.get("tts_config", {})
                                 self._log(
-                                    f"Loaded job {job_id}: user={user_id}, need_summary={need_summary}, tts_config={list(tts_config.keys())}"
+                                    f"Loaded job {job_id}: user={user_id}, direct_tts={is_direct_tts}"
                                 )
                     except Exception as e:
                         self._log(f"Failed to load job {job_id}: {e}", "WARNING")
 
-                result = self.process_url(
-                    url, need_summary, job_id, tts_config, user_id=user_id
-                )
+                if is_direct_tts:
+                    result = self.process_direct_tts(
+                        job_id, tts_config, user_id=user_id
+                    )
+                else:
+                    result = self.process_url(
+                        url, need_summary, job_id, tts_config, user_id=user_id
+                    )
                 results.append(result)
 
                 if queue_file:

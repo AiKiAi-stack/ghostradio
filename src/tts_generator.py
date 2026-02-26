@@ -52,25 +52,36 @@ class TTSGenerator:
     - Provider 故障时自动切换（前端无感知）
     """
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         """
         初始化 TTS 生成器
 
-        从健康检查器获取当前可用 Provider 配置
+        优先使用传入配置，否则从健康检查器获取当前可用 Provider 配置
         """
-        # 从健康检查器获取当前 Provider 配置
-        health_checker = get_health_checker()
-        try:
-            self._config = health_checker.get_tts_config()
-            logger.info(f"Using TTS provider: {self._config.get('provider')}")
-        except RuntimeError as e:
-            raise TTSError(f"No TTS providers available: {e}")
+        if config and config.get("api_key"):
+            self._config = config
+            logger.info(f"Using provided TTS config: {self._config.get('provider')}")
+        else:
+            # 从健康检查器获取当前 Provider 配置
+            health_checker = get_health_checker()
+            try:
+                self._config = health_checker.get_tts_config()
+                logger.info(
+                    f"Using TTS provider from health checker: {self._config.get('provider')}"
+                )
+            except RuntimeError as e:
+                # 初始化时暂不报错，以允许某些极端情况
+                self._config = config or {}
+                logger.warning(f"No TTS providers available in health checker: {e}")
 
-        # 初始化 Provider
-        self._init_provider()
+        # 延迟初始化 Provider
+        self._provider = None
 
     def _init_provider(self) -> None:
         """初始化 TTS Provider"""
+        if self._provider:
+            return
+
         provider_name = self._config.get("provider", "edge-tts")
 
         try:
@@ -87,6 +98,9 @@ class TTSGenerator:
         支持通过 kwargs 传递 Provider 特定参数
         如果当前 Provider 失败，自动切换到下一个可用 Provider 重试
         """
+        # 确保 Provider 已初始化
+        self._init_provider()
+
         max_retries = 3
         last_error = None
         current_provider = self.provider_info["name"]

@@ -6,8 +6,10 @@ API 路由模块
 import json
 import uuid
 import os
+import sys
 import time
 import threading
+import subprocess
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from pathlib import Path
@@ -20,6 +22,61 @@ from src.qrcode_utils import generate_feed_qr_payload
 
 logger = get_logger("api")
 job_queue = JobQueue()
+
+_worker_lock = threading.Lock()
+_worker_running = False
+
+
+def _trigger_worker_async():
+    """在后台线程中启动 Worker 进程"""
+    global _worker_running
+    with _worker_lock:
+        if _worker_running:
+            logger.info("Worker already running, skip trigger")
+            return
+        _worker_running = True
+
+    def run_worker():
+        global _worker_running
+        try:
+            project_root = Path(__file__).parent.parent
+            worker_script = project_root / "src" / "worker.py"
+            cmd = [sys.executable, str(worker_script), "--once"]
+            logger.info(f"Triggering worker: {' '.join(cmd)}")
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, cwd=str(project_root)
+            )
+            if result.returncode == 0:
+                logger.info("Worker completed successfully")
+            else:
+                error_msg = result.stderr[:500] if result.stderr else "Unknown error"
+                logger.error(f"Worker failed: {error_msg}")
+                _mark_pending_jobs_failed(error_msg)
+        except Exception as e:
+            logger.error(f"Worker trigger error: {e}")
+            _mark_pending_jobs_failed(str(e))
+        finally:
+            with _worker_lock:
+                _worker_running = False
+
+    thread = threading.Thread(target=run_worker, daemon=True)
+    thread.start()
+
+
+def _mark_pending_jobs_failed(error: str):
+    """Worker 崩溃时标记所有待处理任务为失败"""
+    try:
+        job_manager = get_job_manager()
+        for job in job_manager.get_all_jobs():
+            if job.status in [
+                JobStatus.PENDING,
+                JobStatus.QUEUED,
+                JobStatus.PROCESSING,
+            ]:
+                job_manager.set_job_error(job.id, f"Worker crashed: {error[:200]}")
+                logger.info(f"Marked job {job.id} as failed due to worker crash")
+    except Exception as e:
+        logger.error(f"Failed to mark jobs as failed: {e}")
 
 
 class JobManager:
@@ -36,7 +93,7 @@ class JobManager:
         self.jobs_dir = Path(jobs_dir)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self._jobs: Dict[str, Job] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock to allow reentrant locking
         self._load_existing_jobs()
 
     def _load_existing_jobs(self) -> None:
@@ -305,6 +362,7 @@ def handle_generate(handler, job_manager: JobManager) -> tuple:
         job_manager.update_job(
             job.id, status=JobStatus.QUEUED, progress=5, message="已加入处理队列"
         )
+        _trigger_worker_async()
         return (200, {"success": True, "job_id": job.id}, "application/json")
     except Exception as e:
         logger.error("Failed to create job", error=e)

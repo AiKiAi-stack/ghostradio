@@ -239,7 +239,14 @@ class ModelHealthChecker:
     def get_llm_config(self) -> Dict[str, Any]:
         """获取当前 LLM 模型配置"""
         if not self._available_llm:
-            raise RuntimeError("No LLM models available")
+            # TTS-only 模式：返回一个占位配置，只有在真正调用 LLM 时才报错
+            logger.warning("LLM not configured. Will fail if LLM processing is requested.")
+            return {
+                "provider": "none",
+                "model": "none",
+                "api_key": None,
+                "base_url": None,
+            }
         
         if self._current_llm_index >= len(self._available_llm):
             self._current_llm_index = 0
