@@ -542,6 +542,13 @@
                 prompt_text: currentMode === 4 ? input : "",
                 nlp_texts: currentMode === 3 ? JSON.parse(input) : null,
                 tts_config: tts_config,
+                need_summary: false  // 禁用 LLM 总结，只用火山引擎 TTS
+            };
+                user_id: userId,
+                url: currentMode === 0 ? input : "",
+                prompt_text: currentMode === 4 ? input : "",
+                nlp_texts: currentMode === 3 ? JSON.parse(input) : null,
+                tts_config: tts_config,
                 need_summary: currentMode === 0
             };
 
